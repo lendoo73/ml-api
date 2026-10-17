@@ -1,0 +1,4 @@
+from oriented_bounding_box.controllers.oriented_bounding_box_router_factory import create_oriented_bounding_box_router
+from oriented_bounding_box.services.oriented_bounding_box_service import OrientedBoundingBoxService
+
+router = create_oriented_bounding_box_router(OrientedBoundingBoxService, "/oriented_bounding_box", ["oriented bounding box"])

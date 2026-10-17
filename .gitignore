@@ -1,0 +1,16 @@
+**/.*
+!.github/
+!.dockerignore
+!.gitignore
+
+**/__pycache__
+**/weights
+
+htmlcov/
+log/
+runs/
+
+coverage.json
+coverage.log
+coverage.xml
+report.xml

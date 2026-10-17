@@ -1,0 +1,1 @@
+from .yolo_oriented_bounding_box_model_repository import YoloOrientedBoundingBoxModelRepository

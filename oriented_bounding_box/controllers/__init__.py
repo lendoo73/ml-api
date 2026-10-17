@@ -1,0 +1,1 @@
+from .oriented_bounding_box_rest_controller import router
