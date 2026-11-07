@@ -1,7 +1,7 @@
 import asyncio
 import json
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from functools import lru_cache
 from typing import Any, Literal, Type
@@ -15,9 +15,7 @@ from classification.services.chest_xray_classification_service import (
     ChestXrayClassificationService,
 )
 from classification.services.weather_classification_service import WeatherClassificationService
-from object_detection.services.face_mask_detection_service import FaceMaskDetectionService
 from object_detection.services.object_detection_service import ObjectDetectionService
-from object_detection.services.road_sign_detection_service import RoadSignDetectionService
 from oriented_bounding_box.services.car_parking_lot_service import CarParkingLotService
 from oriented_bounding_box.services.oriented_bounding_box_service import (
     OrientedBoundingBoxService,
@@ -94,17 +92,18 @@ class ModelSpec:
     service_class: Type
     options_class: Type[Options]
     task: str
+    service_kwargs: dict[str, Any] = field(default_factory=dict)
 
 
 MODEL_SPECS = {
     ModelId.OBJECT_DETECTION.value: ModelSpec(
-        ObjectDetectionService, DetectionOptions, "detection"
+        ObjectDetectionService, DetectionOptions, "detection", {"model": "yolo26x"}
     ),
     ModelId.ROAD_SIGN_DETECTION.value: ModelSpec(
-        RoadSignDetectionService, DetectionOptions, "detection"
+        ObjectDetectionService, DetectionOptions, "detection", {"model": "road-sign-detect"}
     ),
     ModelId.FACE_MASK_DETECTION.value: ModelSpec(
-        FaceMaskDetectionService, DetectionOptions, "detection"
+        ObjectDetectionService, DetectionOptions, "detection", {"model": "face-mask-detect"}
     ),
     ModelId.POSE_ESTIMATION.value: ModelSpec(
         PoseEstimationService, PoseOptions, "pose"
@@ -138,7 +137,8 @@ MODEL_SPECS = {
 
 @lru_cache(maxsize=None)
 def _cached_service(model_id: str):
-    return MODEL_SPECS[model_id].service_class()
+    spec = MODEL_SPECS[model_id]
+    return spec.service_class(**spec.service_kwargs)
 
 
 @lru_cache(maxsize=None)

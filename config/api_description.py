@@ -19,9 +19,7 @@ For custom models, use the names and ordering that the model was trained with.
 
 | Model | WebSocket endpoint | Optional query parameters |
 | --- | --- | --- |
-| Object detection | `/api/object_detection/predict/webcam` | `classes` (optional, repeatable IDs or names); `tracking` (`false`); `tracker` (`bytetrack`; `bytetrack` or `botsort`) |
-| Road sign detection | `/api/object_detection/road_signs/predict/webcam` | `classes` (optional, repeatable IDs or names); `tracking` (`false`); `tracker` (`bytetrack`; `bytetrack` or `botsort`) |
-| Face mask detection | `/api/object_detection/face_mask/predict/webcam` | `classes` (optional, repeatable IDs or names); `tracking` (`false`); `tracker` (`bytetrack`; `bytetrack` or `botsort`). Tracking is rejected if unsupported by the model. |
+| Object detection | `/api/object_detection/predict/webcam` | `model` (`yolo26x`, `face-mask-detect`, `road-sign-detect`, or `knife`); `classes` (optional, repeatable IDs or names); `tracking` (`false`); `tracker` (`bytetrack` or `botsort`) |
 | Classification | `/api/classification/predict/webcam` | None |
 | Chest X-ray classification | `/api/classification/chest_xray/predict/webcam` | None |
 | Weather classification | `/api/classification/weather/predict/webcam` | None |

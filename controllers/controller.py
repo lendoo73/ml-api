@@ -6,8 +6,6 @@ from classification.controllers import classify_weather_rest_controller
 from media_search.controllers import media_search_rest_controller
 from multi_model.controllers import multi_model_rest_controller
 from object_detection.controllers import object_detection_rest_controller
-from object_detection.controllers import road_sign_detection_rest_controller
-from object_detection.controllers import face_mask_detection_rest_controller
 from pose_estimation.controllers import pose_estimation_rest_controller
 from oriented_bounding_box.controllers import oriented_bounding_box_rest_controller
 from oriented_bounding_box.controllers import car_parking_lot_rest_controller
@@ -19,8 +17,6 @@ from mail.controllers import mail_rest_controller
 
 api_router = APIRouter()
 api_router.include_router(object_detection_rest_controller.router)
-api_router.include_router(road_sign_detection_rest_controller.router)
-api_router.include_router(face_mask_detection_rest_controller.router)
 api_router.include_router(classification_rest_controller.router)
 api_router.include_router(chest_xray_classification_rest_controller.router)
 api_router.include_router(classify_weather_rest_controller.router)

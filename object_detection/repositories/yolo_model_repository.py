@@ -1,8 +1,8 @@
-import os
 import tempfile
 import threading
 from collections import defaultdict
 from pathlib import Path
+from typing import Literal
 import cv2
 import numpy as np
 
@@ -12,10 +12,22 @@ from ultralytics.utils.plotting import Annotator, colors
 from object_detection.models.entities.detection import Detection
 
 
+DetectionModel = Literal["yolo26x", "face-mask-detect", "road-sign-detect", "knife"]
+MODEL_WEIGHT_PATHS = {
+    "yolo26x": Path(__file__).resolve().parent.parent / "weights" / "yolo26x.pt",
+    "face-mask-detect": (
+        Path(__file__).resolve().parent.parent / "weights" / "yolo26x_face_mask_detect.pt"
+    ),
+    "road-sign-detect": (
+        Path(__file__).resolve().parent.parent / "weights" / "yolo26x_road_sign-detect.pt"
+    ),
+    "knife": Path(__file__).resolve().parent.parent / "weights" / "yolo26s-knife.pt",
+}
+
+
 class YoloModelRepository:
-    def __init__(self, model_path: str | None = None):
-        default_model_path = Path(__file__).resolve().parent.parent / "weights" / "yolo26x.pt"
-        self._model_path = model_path or os.getenv("YOLO_MODEL", str(default_model_path))
+    def __init__(self, model_path: str | None = None, *, model: DetectionModel = "yolo26x"):
+        self._model_path = model_path or str(MODEL_WEIGHT_PATHS[model])
         self._thread_models = threading.local()
 
     @property

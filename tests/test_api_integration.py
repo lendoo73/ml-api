@@ -169,11 +169,45 @@ def test_brain_tumor_segmentation_routes_are_registered(client):
     assert "/api/segmentation/brain_tumor/predict/video" not in paths
 
 
-def test_face_mask_detection_routes_are_registered(client):
+def test_object_detection_model_selector_is_registered(client):
     paths = client.app.openapi()["paths"]
+    assert "/api/object_detection/predict" in paths
+    assert "/api/object_detection/face_mask/predict" not in paths
+    assert "/api/object_detection/road_signs/predict" not in paths
+    parameters = {
+        parameter["name"]: parameter
+        for parameter in paths["/api/object_detection/predict"]["post"]["parameters"]
+    }
+    assert parameters["model"]["schema"]["enum"] == [
+        "yolo26x", "face-mask-detect", "road-sign-detect", "knife"
+    ]
 
-    assert "/api/object_detection/face_mask/predict" in paths
-    assert "/api/object_detection/face_mask/predict/video" in paths
+
+@pytest.mark.parametrize(
+    ("model", "weight_filename"),
+    [
+        ("yolo26x", "yolo26x.pt"),
+        ("face-mask-detect", "yolo26x_face_mask_detect.pt"),
+        ("road-sign-detect", "yolo26x_road_sign-detect.pt"),
+        ("knife", "yolo26s-knife.pt"),
+    ],
+)
+def test_object_detection_model_selects_its_configured_weights(model, weight_filename):
+    from object_detection.controllers.object_detection_rest_controller import get_service
+
+    service = get_service(model)
+
+    assert Path(service.model_repository._model_path).name == weight_filename
+
+
+def test_object_detection_rejects_unsupported_model(client):
+    with IMAGE_PATH.open("rb") as image:
+        response = client.post(
+            "/api/object_detection/predict?model=unknown",
+            files={"source": (IMAGE_PATH.name, image, "image/png")},
+        )
+
+    assert response.status_code == 422
 
 
 def test_chest_xray_classification_routes_are_registered(client):
