@@ -31,7 +31,7 @@ Recommended API surface:
 
 Use the OpenAPI tag `oriented bounding box`.
 
-The controller should be model-agnostic. The default service/repository should load the official YOLO26x OBB weights, while future model-specific services can be registered with the same router factory or dependency configuration.
+The controller accepts a `model` literal and the repository maps each allowed model name to server-configured weights. Current choices are `yolo26x-obb` and `car-parking-lot`.
 
 ## Planned package structure
 
@@ -41,7 +41,6 @@ oriented_bounding_box/
 ├── controllers/
 │   ├── __init__.py
 │   ├── oriented_bounding_box_rest_controller.py
-│   └── oriented_bounding_box_router_factory.py
 ├── models/
 │   ├── __init__.py
 │   ├── dtos/

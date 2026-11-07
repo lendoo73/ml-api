@@ -6,12 +6,15 @@ from fastapi.concurrency import run_in_threadpool
 from segmentation.repositories.brain_tumor_segmentation_repository import (
     BrainTumorSegmentationRepository,
 )
+from segmentation.repositories.yolo_segmentation_model_repository import SegmentationModel
 from services.base_vision_service import BaseVisionService
 
 
 class BrainTumorSegmentationService(BaseVisionService):
-    def __init__(self):
-        super().__init__(BrainTumorSegmentationRepository())
+    def __init__(self, model: SegmentationModel = "brain-tumor"):
+        if model != "brain-tumor":
+            raise ValueError(f"Unsupported model for BrainTumorSegmentationService: {model}")
+        super().__init__(BrainTumorSegmentationRepository(model=model))
 
     async def predict_zip(self, archive_bytes: bytes, progress_callback=None) -> list[dict]:
         try:

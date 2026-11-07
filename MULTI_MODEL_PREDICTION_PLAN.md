@@ -8,15 +8,15 @@ the same source, then returns their results together. For video, results are
 combined by frame. The front end remains responsible for combining prediction
 results into application-specific behavior.
 
-Existing model-specific endpoints remain available and unchanged.
+The standalone object-detection endpoint uses a model selector to choose among
+server-configured detector weights.
 
 ## Supported models
 
 - Define an explicit model literal/allowlist. Each value identifies one
   supported model implementation and maps to its service and options adapter.
-  For example, `object-detection` maps to the general YOLO26 detector at
-  `/api/object_detection`, while `road-sign-detection` maps to the custom
-  detector at `/api/object_detection/road_signs`.
+  For example, `object-detection` maps to the general YOLO26 detector, while
+  `road-sign-detection` maps to the custom road-sign detector.
 - The literal can include general or custom models from any supported task,
   including specialized models such as pothole segmentation. Being
   single-class does not prevent a model from being supported.

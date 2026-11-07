@@ -2,18 +2,14 @@ from pathlib import Path
 
 from segmentation.models.entities.brain_tumor_segmentation import BrainTumorSegmentation
 from segmentation.repositories.yolo_segmentation_model_repository import (
+    SegmentationModel,
     YoloSegmentationModelRepository,
 )
 
 
-BRAIN_TUMOR_MODEL_PATH = (
-    Path(__file__).resolve().parent.parent / "weights" / "yolo26x-brain_tumor-seg.pt"
-)
-
-
 class BrainTumorSegmentationRepository(YoloSegmentationModelRepository):
-    def __init__(self):
-        super().__init__(str(BRAIN_TUMOR_MODEL_PATH))
+    def __init__(self, model: SegmentationModel = "brain-tumor"):
+        super().__init__(model=model)
 
     @staticmethod
     def _segmentations_from_result(result) -> list[BrainTumorSegmentation]:

@@ -2,7 +2,10 @@ import os
 
 from fastapi.concurrency import run_in_threadpool
 
-from object_detection.repositories.yolo_model_repository import YoloModelRepository
+from object_detection.repositories.yolo_model_repository import (
+    DetectionModel,
+    YoloModelRepository,
+)
 from object_detection.services.object_tracking_service import ObjectTrackingService
 from services.base_vision_service import BaseVisionService
 from utils.video import download_video_to_temp, save_uploadfile_to_temp
@@ -10,8 +13,8 @@ from exceptions import InvalidVideoSourceError
 
 
 class ObjectDetectionService(BaseVisionService):
-    def __init__(self):
-        repository = YoloModelRepository()
+    def __init__(self, model: DetectionModel = "yolo26x"):
+        repository = YoloModelRepository(model=model)
         super().__init__(repository)
         self.tracking_service = ObjectTrackingService(repository)
 
