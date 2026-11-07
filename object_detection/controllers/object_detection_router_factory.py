@@ -16,6 +16,14 @@ from services.video_job_manager import video_job_manager
 from utils.video import save_uploadfile_to_temp
 
 
+CLASSES_DESCRIPTION = (
+    "Optional zero-based class IDs or class names to include. Repeat this parameter to select multiple classes. "
+    "IDs and names are specific to the model; see the [Ultralytics COCO class list]"
+    "(https://github.com/ultralytics/ultralytics/blob/main/ultralytics/cfg/datasets/coco.yaml) "
+    "for COCO-trained models."
+)
+
+
 def create_object_detection_router(
     service_class: Type[BaseVisionService],
     prefix: str,
@@ -35,19 +43,33 @@ def create_object_detection_router(
                 "font": font, "labels": labels, "boxes": boxes,
                 "color_mode": color_mode, **({"txt_color": txt_color} if txt_color is not None else {})}
 
+    async def resolve_classes(service, classes):
+        if classes is None:
+            return None
+        try:
+            return await run_in_threadpool(service.model_repository.resolve_class_ids, classes)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+
     @router.post("/predict", response_model=list[DetectionDto])
     async def predict_from_file(
         source: UploadFile = File(..., description="Image to analyze"),
         output: ImageOutput = Query("json"),
         conf: float = Query(0.5, ge=0, le=1),
+        classes: list[str] | None = Query(None, description=CLASSES_DESCRIPTION),
         show_conf: bool = Query(True), line_width: int | None = Query(None),
         font_size: int | None = Query(None), font: str = Query("Arial.ttf"),
         labels: bool = Query(True), boxes: bool = Query(True),
         color_mode: ColorMode = Query("class"), txt_color: tuple[int, int, int] =         Query(None),
         service: BaseVisionService = Depends(get_service),
     ):
+        classes = await resolve_classes(service, classes)
         result = await service.predict_image(
-            source, output, plot_options(show_conf, line_width, font_size, font, labels, boxes, color_mode, txt_color), conf
+            source,
+            output,
+            plot_options(show_conf, line_width, font_size, font, labels, boxes, color_mode, txt_color),
+            conf,
+            classes,
         )
         if output == "image":
             return Response(content=result, media_type="image/jpeg")
@@ -58,14 +80,20 @@ def create_object_detection_router(
         source: AnyUrl,
         output: ImageOutput = Query("json"),
         conf: float = Query(0.5, ge=0, le=1),
+        classes: list[str] | None = Query(None, description=CLASSES_DESCRIPTION),
         show_conf: bool = Query(True), line_width: int | None = Query(None),
         font_size: int | None = Query(None), font: str = Query("Arial.ttf"),
         labels: bool = Query(True), boxes: bool = Query(True),
         color_mode: ColorMode = Query("class"), txt_color: tuple[int, int, int] = Query(None),
         service: BaseVisionService = Depends(get_service),
     ):
+        classes = await resolve_classes(service, classes)
         result = await service.predict_url(
-            str(source), output, plot_options(show_conf, line_width, font_size, font, labels, boxes, color_mode, txt_color), conf
+            str(source),
+            output,
+            plot_options(show_conf, line_width, font_size, font, labels, boxes, color_mode, txt_color),
+            conf,
+            classes,
         )
         if output == "image":
             return Response(content=result, media_type="image/jpeg")
@@ -76,15 +104,21 @@ def create_object_detection_router(
         query: str = Query(..., min_length=1),
         output: ImageOutput = Query("json"),
         conf: float = Query(0.5, ge=0, le=1),
+        classes: list[str] | None = Query(None, description=CLASSES_DESCRIPTION),
         show_conf: bool = Query(True), line_width: int | None = Query(None),
         font_size: int | None = Query(None), font: str = Query("Arial.ttf"),
         labels: bool = Query(True), boxes: bool = Query(True),
         color_mode: ColorMode = Query("class"), txt_color: tuple[int, int, int] = Query(None),
         service: BaseVisionService = Depends(get_service),
     ):
+        classes = await resolve_classes(service, classes)
         try:
             result = await service.predict_search(
-                query, output, plot_options(show_conf, line_width, font_size, font, labels, boxes, color_mode, txt_color), conf
+                query,
+                output,
+                plot_options(show_conf, line_width, font_size, font, labels, boxes, color_mode, txt_color),
+                conf,
+                classes,
             )
         except ValueError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
@@ -98,6 +132,14 @@ def create_object_detection_router(
         service = get_service()
         tracking = websocket.query_params.get("tracking", "false").lower() == "true"
         tracker = websocket.query_params.get("tracker", "bytetrack")
+        try:
+            classes = await run_in_threadpool(
+                service.model_repository.resolve_class_ids,
+                websocket.query_params.getlist("classes") or None,
+            )
+        except ValueError as error:
+            await websocket.close(code=1008, reason=str(error))
+            return
         if tracker not in {"bytetrack", "botsort"}:
             await websocket.close(code=1008, reason="Unsupported tracker")
             return
@@ -108,7 +150,8 @@ def create_object_detection_router(
             while True:
                 frame = await websocket.receive_bytes()
                 detections = await run_in_threadpool(
-                    service.predict_frame_bytes, frame, 0.5, tracking, tracker
+                    service.predict_frame_bytes, frame, 0.5, tracking, tracker,
+                    classes,
                 )
                 await websocket.send_json([detection.model_dump() for detection in detections])
         except WebSocketDisconnect:
@@ -128,12 +171,14 @@ def create_object_detection_router(
         color_mode: ColorMode = Query("class"), txt_color: tuple[int, int, int] = Query(None),
         tracking: bool = Query(False),
         tracker: TrackerType = Query("bytetrack"),
+        classes: list[str] | None = Query(None, description=CLASSES_DESCRIPTION),
         service: BaseVisionService = Depends(get_service),
     ):
+        classes = await resolve_classes(service, classes)
         if output == "video":
             video_path = await service.predict_annotated_video(
                 source, plot_options(show_conf, line_width, font_size, font, labels, boxes, color_mode, txt_color),
-                conf, tracking=tracking, tracker=tracker,
+                conf, tracking=tracking, tracker=tracker, classes=classes,
             )
             return FileResponse(
                 video_path,
@@ -146,7 +191,7 @@ def create_object_detection_router(
             "job_id": video_job_manager.submit_path(
                 video_path,
                 lambda path, progress: service.predict_video_path(
-                    path, conf, progress, tracking=tracking, tracker=tracker
+                    path, conf, progress, tracking=tracking, tracker=tracker, classes=classes
                 ),
             )
         }
@@ -158,11 +203,13 @@ def create_object_detection_router(
         conf: float = Query(0.5, ge=0, le=1),
         tracking: bool = Query(False),
         tracker: TrackerType = Query("bytetrack"),
+        classes: list[str] | None = Query(None, description=CLASSES_DESCRIPTION),
         service: BaseVisionService = Depends(get_service),
     ):
+        classes = await resolve_classes(service, classes)
         if output == "video":
             result = await service.predict_video_url(
-                str(source), output, conf=conf, tracking=tracking, tracker=tracker
+                str(source), output, conf=conf, tracking=tracking, tracker=tracker, classes=classes
             )
             return FileResponse(
                 result,
@@ -175,6 +222,7 @@ def create_object_detection_router(
                 lambda progress: service.predict_video_url(
                     str(source), output, conf=conf, progress_callback=progress,
                     tracking=tracking, tracker=tracker,
+                    classes=classes,
                 )
             )
         }

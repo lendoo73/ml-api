@@ -15,14 +15,17 @@ class ObjectDetectionService(BaseVisionService):
         super().__init__(repository)
         self.tracking_service = ObjectTrackingService(repository)
 
-    def predict_frame_bytes(self, frame_bytes: bytes, conf: float = 0.5, tracking=False, tracker="bytetrack"):
+    def predict_frame_bytes(
+        self, frame_bytes: bytes, conf: float = 0.5, tracking=False,
+        tracker="bytetrack", classes: list[int] | None = None,
+    ):
         if tracking:
-            return self.tracking_service.track_frame_bytes(frame_bytes, conf, tracker)
-        return super().predict_frame_bytes(frame_bytes, conf)
+            return self.tracking_service.track_frame_bytes(frame_bytes, conf, tracker, classes)
+        return super().predict_frame_bytes(frame_bytes, conf, classes)
 
     async def predict_video_path(
         self, video_path, conf=0.5, progress_callback=None, plot_options=None,
-        tracking=False, tracker="bytetrack",
+        tracking=False, tracker="bytetrack", classes: list[int] | None = None,
     ):
         if tracking:
             return await run_in_threadpool(
@@ -31,15 +34,20 @@ class ObjectDetectionService(BaseVisionService):
                 conf,
                 tracker,
                 progress_callback,
+                classes,
             )
-        return await super().predict_video_path(video_path, conf, progress_callback, plot_options)
+        return await super().predict_video_path(
+            video_path, conf, progress_callback, plot_options, classes=classes
+        )
 
     async def predict_annotated_video(
         self, source, plot_options=None, conf=0.5, progress_callback=None,
-        tracking=False, tracker="bytetrack",
+        tracking=False, tracker="bytetrack", classes: list[int] | None = None,
     ):
         if not tracking:
-            return await super().predict_annotated_video(source, plot_options, conf, progress_callback)
+            return await super().predict_annotated_video(
+                source, plot_options, conf, progress_callback, classes=classes
+            )
 
         video_path = await save_uploadfile_to_temp(source)
         try:
@@ -50,17 +58,18 @@ class ObjectDetectionService(BaseVisionService):
                 conf,
                 tracker,
                 progress_callback,
+                classes,
             )
         finally:
             os.remove(video_path)
 
     async def predict_video_url(
         self, source_url: str, output: str = "json", plot_options=None, conf=0.5,
-        progress_callback=None, tracking=False, tracker="bytetrack",
+        progress_callback=None, tracking=False, tracker="bytetrack", classes: list[int] | None = None,
     ):
         if not tracking:
             return await super().predict_video_url(
-                source_url, output, plot_options, conf, progress_callback
+                source_url, output, plot_options, conf, progress_callback, classes=classes
             )
 
         video_path = await run_in_threadpool(download_video_to_temp, source_url)
@@ -74,6 +83,7 @@ class ObjectDetectionService(BaseVisionService):
                         conf,
                         tracker,
                         progress_callback,
+                        classes,
                     )
                 return await run_in_threadpool(
                     self.tracking_service.track_video,
@@ -81,6 +91,7 @@ class ObjectDetectionService(BaseVisionService):
                     conf,
                     tracker,
                     progress_callback,
+                    classes,
                 )
             except ValueError as error:
                 raise InvalidVideoSourceError(

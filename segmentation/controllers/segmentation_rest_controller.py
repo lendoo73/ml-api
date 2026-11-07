@@ -20,6 +20,21 @@ def get_service() -> SegmentationService:
 
 
 router = APIRouter(prefix="/segmentation", tags=["segmentation"])
+CLASSES_DESCRIPTION = (
+    "Optional zero-based class IDs or class names to include. Repeat this parameter to select multiple classes. "
+    "IDs and names are specific to the model; see the [Ultralytics COCO class list]"
+    "(https://github.com/ultralytics/ultralytics/blob/main/ultralytics/cfg/datasets/coco.yaml) "
+    "for COCO-trained models. For custom models, use the names and ordering that the model was trained with."
+)
+
+
+async def resolve_classes(service: SegmentationService, classes: list[str] | None):
+    if classes is None:
+        return None
+    try:
+        return await run_in_threadpool(service.model_repository.resolve_class_ids, classes)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
 
 
 def plot_options(
@@ -31,7 +46,6 @@ def plot_options(
     masks: bool = True,
     boxes: bool = True,
     color_mode: ColorMode = "class",
-    txt_color: tuple[int, int, int] | None = None,
 ) -> dict:
     return {
         "conf": show_conf,
@@ -42,7 +56,6 @@ def plot_options(
         "masks": masks,
         "boxes": boxes,
         "color_mode": color_mode,
-        **({"txt_color": txt_color} if txt_color is not None else {}),
     }
 
 
@@ -51,6 +64,7 @@ async def predict_from_file(
     source: UploadFile = File(..., description="Image to segment"),
     output: ImageOutput = Query("json", description="Return JSON or an annotated JPEG image."),
     conf: float = Query(0.5, ge=0, le=1, description="Minimum prediction confidence."),
+    classes: list[str] | None = Query(None, description=CLASSES_DESCRIPTION),
     show_conf: bool = Query(True, description="Show confidence values in labels."),
     line_width: int | None = Query(None, description="Rendered line width in pixels."),
     font_size: int | None = Query(None, description="Rendered label text size in pixels."),
@@ -59,14 +73,15 @@ async def predict_from_file(
     masks: bool = Query(True, description="Render segmentation masks."),
     boxes: bool = Query(True, description="Render bounding boxes."),
     color_mode: ColorMode = Query("class", description="Use instance or class colors."),
-    txt_color: tuple[int, int, int] | None = Query(None, description="Optional label color in BGR order."),
     service: SegmentationService = Depends(get_service),
 ):
+    classes = await resolve_classes(service, classes)
     result = await service.predict_image(
         source,
         output,
-        plot_options(show_conf, line_width, font_size, font, labels, masks, boxes, color_mode, txt_color),
+        plot_options(show_conf, line_width, font_size, font, labels, masks, boxes, color_mode),
         conf,
+        classes,
     )
     return Response(content=result, media_type="image/jpeg") if output == "image" else result
 
@@ -76,6 +91,7 @@ async def predict_from_url(
     source: AnyUrl,
     output: ImageOutput = Query("json"),
     conf: float = Query(0.5, ge=0, le=1),
+    classes: list[str] | None = Query(None, description=CLASSES_DESCRIPTION),
     show_conf: bool = Query(True),
     line_width: int | None = Query(None),
     font_size: int | None = Query(None),
@@ -84,14 +100,15 @@ async def predict_from_url(
     masks: bool = Query(True),
     boxes: bool = Query(True),
     color_mode: ColorMode = Query("class"),
-    txt_color: tuple[int, int, int] | None = Query(None),
     service: SegmentationService = Depends(get_service),
 ):
+    classes = await resolve_classes(service, classes)
     result = await service.predict_url(
         str(source),
         output,
-        plot_options(show_conf, line_width, font_size, font, labels, masks, boxes, color_mode, txt_color),
+        plot_options(show_conf, line_width, font_size, font, labels, masks, boxes, color_mode),
         conf,
+        classes,
     )
     return Response(content=result, media_type="image/jpeg") if output == "image" else result
 
@@ -103,9 +120,18 @@ async def predict_from_webcam(websocket: WebSocket):
     tracking = websocket.query_params.get("tracking", "false").lower() == "true"
     tracker = websocket.query_params.get("tracker", "bytetrack")
     try:
+        classes = await resolve_classes(
+            service, websocket.query_params.getlist("classes") or None
+        )
+    except HTTPException as error:
+        await websocket.close(code=1008, reason=str(error.detail))
+        return
+    try:
         while True:
             frame = await websocket.receive_bytes()
-            segmentations = await run_in_threadpool(service.predict_frame_bytes, frame, 0.5, tracking, tracker)
+            segmentations = await run_in_threadpool(
+                service.predict_frame_bytes, frame, 0.5, tracking, tracker, classes
+            )
             await websocket.send_json([
                 segmentation.model_dump() for segmentation in segmentations
             ])
@@ -121,12 +147,16 @@ async def predict_from_video(
     source: UploadFile = File(..., description="Video to segment"),
     output: VideoOutput = Query("json"),
     conf: float = Query(0.5, ge=0, le=1),
+    classes: list[str] | None = Query(None, description=CLASSES_DESCRIPTION),
     tracking: bool = Query(False),
     tracker: TrackerType = Query("bytetrack"),
     service: SegmentationService = Depends(get_service),
 ):
+    classes = await resolve_classes(service, classes)
     if output == "video":
-        video_path = await (service.predict_tracked_annotated_video(source, conf=conf, tracker=tracker) if tracking else service.predict_annotated_video(source, conf=conf))
+        video_path = await service.predict_annotated_video(
+            source, conf=conf, tracking=tracking, tracker=tracker, classes=classes
+        )
         return FileResponse(
             video_path,
             media_type="video/mp4",
@@ -134,7 +164,14 @@ async def predict_from_video(
             background=BackgroundTask(os.remove, video_path),
         )
     video_path = await save_uploadfile_to_temp(source)
-    return {"job_id": video_job_manager.submit_path(video_path, lambda path, progress: service.predict_tracked_video_path(path, conf, progress, tracker) if tracking else service.predict_video_path(path, conf, progress))}
+    return {
+        "job_id": video_job_manager.submit_path(
+            video_path,
+            lambda path, progress: service.predict_video_path(
+                path, conf, progress, tracking=tracking, tracker=tracker, classes=classes
+            ),
+        )
+    }
 
 
 @router.get("/predict/video", response_model=dict)
@@ -142,17 +179,29 @@ async def predict_from_video_url(
     source: AnyUrl,
     output: VideoOutput = Query("json"),
     conf: float = Query(0.5, ge=0, le=1),
+    classes: list[str] | None = Query(None, description=CLASSES_DESCRIPTION),
     tracking: bool = Query(False),
     tracker: TrackerType = Query("bytetrack"),
     service: SegmentationService = Depends(get_service),
 ):
+    classes = await resolve_classes(service, classes)
     if output == "video":
-        result = await (service.predict_tracked_video_url(str(source), output, conf=conf, tracker=tracker) if tracking else service.predict_video_url(str(source), output, conf=conf))
+        result = await service.predict_video_url(
+            str(source), output, conf=conf, tracking=tracking, tracker=tracker, classes=classes
+        )
         return FileResponse(result, media_type="video/mp4", filename="segmentation.mp4",
                             background=BackgroundTask(os.remove, result))
     return {
         "job_id": video_job_manager.submit(
-            lambda progress: service.predict_tracked_video_url(str(source), output, conf=conf, progress_callback=progress, tracker=tracker) if tracking else service.predict_video_url(str(source), output, conf=conf, progress_callback=progress)
+            lambda progress: service.predict_video_url(
+                str(source),
+                output,
+                conf=conf,
+                progress_callback=progress,
+                tracking=tracking,
+                tracker=tracker,
+                classes=classes,
+            )
         )
     }
 

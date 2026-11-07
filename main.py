@@ -7,18 +7,18 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from exceptions import InvalidImageSourceError, InvalidVideoSourceError
 
+from config.api_description import API_DESCRIPTION
 from config.config import CORS_ALLOWED_ORIGINS
 from config.log_config import access_logger_service, error_logger_service
 from controllers.controller import api_router
+from multi_model.controllers.multi_model_rest_controller import (
+    MULTI_MODEL_TAG_DESCRIPTION,
+)
 
 access_logger = access_logger_service.get_logger("access_logger")
 error_logger = error_logger_service.get_logger("error_logger")
 
 version_service = VersionService()
-
-description = """
-# ML REST API 🚀
-"""
 
 def get_origins():
     if not CORS_ALLOWED_ORIGINS:
@@ -45,7 +45,13 @@ def add_middleware(application):
 
 def start_app():
     application = FastAPI(
-        description=description,
+        description=API_DESCRIPTION,
+        openapi_tags=[
+            {
+                "name": "multi-model prediction",
+                "description": MULTI_MODEL_TAG_DESCRIPTION,
+            }
+        ],
         version=version_service.get_version().str_repr(),
         docs_url="/api/docs",
         redoc_url="/api/redoc",

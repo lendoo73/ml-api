@@ -26,8 +26,14 @@ class YoloModelRepository:
             self._thread_models.model = model
         return model
 
-    def predict(self, source, conf: float = 0.5) -> list[Detection]:
-        result = self._predict_result(source, conf)
+    def predict(
+        self, source, conf: float = 0.5, classes: list[int | str] | None = None
+    ) -> list[Detection]:
+        result = (
+            self._predict_result(source, conf)
+            if classes is None
+            else self._predict_result(source, conf, classes)
+        )
         return [
             Detection(
                 class_id=int(class_id),
@@ -43,9 +49,14 @@ class YoloModelRepository:
         ]
 
     def predict_annotated_image(
-        self, source, plot_options: dict | None = None, conf: float = 0.5
+        self, source, plot_options: dict | None = None, conf: float = 0.5,
+        classes: list[int | str] | None = None,
     ) -> bytes:
-        result = self._predict_result(source, conf)
+        result = (
+            self._predict_result(source, conf)
+            if classes is None
+            else self._predict_result(source, conf, classes)
+        )
         options = dict(plot_options or {})
         if options.get("line_width") is not None:
             options["line_width"] = max(1, round(options["line_width"]))
@@ -56,10 +67,37 @@ class YoloModelRepository:
             raise RuntimeError("Could not encode annotated image")
         return encoded_image.tobytes()
 
-    def _predict_result(self, source, conf: float = 0.5):
-        return self.model.predict(source=source, conf=conf, verbose=False)[0]
+    def _predict_result(self, source, conf: float = 0.5, classes: list[int | str] | None = None):
+        classes = self.resolve_class_ids(classes)
+        options = {"classes": classes} if classes is not None else {}
+        return self.model.predict(source=source, conf=conf, verbose=False, **options)[0]
 
-    def track_frame(self, source, conf: float, tracker: str, trajectory_length: int = 30) -> list[Detection]:
+    def resolve_class_ids(self, classes: list[int | str] | None) -> list[int] | None:
+        if classes is None:
+            return None
+
+        model_names = {int(class_id): str(name) for class_id, name in self.model.names.items()}
+        name_to_id = {name.casefold(): class_id for class_id, name in model_names.items()}
+        resolved = []
+        for value in classes:
+            class_value = str(value).strip()
+            if class_value.lstrip("-").isdigit():
+                class_id = int(class_value)
+                if class_id not in model_names:
+                    raise ValueError(f"Unknown class ID: {class_value}.")
+            else:
+                class_id = name_to_id.get(class_value.casefold())
+                if class_id is None:
+                    raise ValueError(f"Unknown class name: {class_value}.")
+            if class_id not in resolved:
+                resolved.append(class_id)
+        return resolved
+
+    def track_frame(
+        self, source, conf: float, tracker: str, trajectory_length: int = 30,
+        classes: list[int | str] | None = None,
+    ) -> list[Detection]:
+        classes = self.resolve_class_ids(classes)
         self._ensure_tracking_state()
         result = self.model.track(
             source=source,
@@ -67,12 +105,15 @@ class YoloModelRepository:
             tracker=self._tracker_config(tracker),
             persist=True,
             verbose=False,
+            **({"classes": classes} if classes is not None else {}),
         )[0]
         return self._tracked_detections(result, trajectory_length)
 
     def track_video(
-        self, source, conf: float, tracker: str, trajectory_length: int = 30, progress_callback=None
+        self, source, conf: float, tracker: str, trajectory_length: int = 30,
+        progress_callback=None, classes: list[int | str] | None = None,
     ) -> list[dict]:
+        classes = self.resolve_class_ids(classes)
         fps = self._probe_fps(source)
         total_frames = self._probe_frame_count(source)
         frames = []
@@ -86,6 +127,7 @@ class YoloModelRepository:
                     persist=True,
                     stream=True,
                     verbose=False,
+                    **({"classes": classes} if classes is not None else {}),
                 )
             ):
                 if progress_callback:
@@ -110,7 +152,9 @@ class YoloModelRepository:
         tracker="bytetrack",
         trajectory_length=30,
         progress_callback=None,
+        classes: list[int | str] | None = None,
     ) -> str:
+        classes = self.resolve_class_ids(classes)
         self.reset_tracking()
         try:
             return self._process_annotated_video(
@@ -124,6 +168,7 @@ class YoloModelRepository:
                     tracker=self._tracker_config(tracker),
                     persist=True,
                     verbose=False,
+                    **({"classes": classes} if classes is not None else {}),
                 )[0],
                 trajectory_length,
             )
@@ -154,12 +199,18 @@ class YoloModelRepository:
 
         return BoundingBox.from_xyxy(coordinates.tolist())
 
-    def predict_video(self, source, conf=0.5, progress_callback=None) -> list[dict]:
+    def predict_video(
+        self, source, conf=0.5, progress_callback=None, classes: list[int | str] | None = None
+    ) -> list[dict]:
+        classes = self.resolve_class_ids(classes)
         fps = self._probe_fps(source)
         total_frames = self._probe_frame_count(source)
         frames = []
         for frame_index, result in enumerate(
-            self.model.predict(source=source, conf=conf, stream=True, verbose=False)
+            self.model.predict(
+                source=source, conf=conf, stream=True, verbose=False,
+                **({"classes": classes} if classes is not None else {}),
+            )
         ):
             if progress_callback:
                 progress_callback(frame_index + 1, total_frames)
@@ -170,13 +221,16 @@ class YoloModelRepository:
             })
         return frames
 
-    def predict_annotated_video(self, source, plot_options=None, conf=0.5, progress_callback=None) -> str:
+    def predict_annotated_video(
+        self, source, plot_options=None, conf=0.5, progress_callback=None,
+        classes: list[int | str] | None = None,
+    ) -> str:
         return self._process_annotated_video(
             source,
             plot_options,
             conf,
             progress_callback,
-            lambda frame: self._predict_result(frame, conf),
+            lambda frame: self._predict_result(frame, conf, classes),
         )
 
     def _process_annotated_video(

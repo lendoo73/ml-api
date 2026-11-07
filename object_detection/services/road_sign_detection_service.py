@@ -11,7 +11,9 @@ class RoadSignDetectionService(BaseVisionService):
         super().__init__(repository)
         self.tracking_service = ObjectTrackingService(repository)
 
-    def predict_frame_bytes(self, frame_bytes: bytes, conf=0.5, tracking=False, tracker="bytetrack"):
+    def predict_frame_bytes(
+        self, frame_bytes: bytes, conf=0.5, tracking=False, tracker="bytetrack", classes=None
+    ):
         if tracking:
-            return self.tracking_service.track_frame_bytes(frame_bytes, conf, tracker)
-        return super().predict_frame_bytes(frame_bytes, conf)
+            return self.tracking_service.track_frame_bytes(frame_bytes, conf, tracker, classes)
+        return super().predict_frame_bytes(frame_bytes, conf, classes)

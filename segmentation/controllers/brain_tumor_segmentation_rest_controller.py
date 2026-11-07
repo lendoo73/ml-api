@@ -32,11 +32,13 @@ async def predict_from_file(
     masks: bool = Query(True),
     boxes: bool = Query(True),
     color_mode: ColorMode = Query("class"),
-    txt_color: tuple[int, int, int] | None = Query(None),
     service: BrainTumorSegmentationService = Depends(get_service),
 ):
     result = await service.predict_image(
-        source, output, plot_options(show_conf, line_width, font_size, font, labels, masks, boxes, color_mode, txt_color), conf
+        source,
+        output,
+        plot_options(show_conf, line_width, font_size, font, labels, masks, boxes, color_mode),
+        conf,
     )
     return Response(content=result, media_type="image/jpeg") if output == "image" else result
 

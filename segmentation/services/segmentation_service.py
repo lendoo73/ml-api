@@ -10,7 +10,11 @@ class SegmentationService(BaseVisionService):
         super().__init__(YoloSegmentationModelRepository())
         self.tracking_service = TrackingService(self.model_repository)
 
-    def predict_frame_bytes(self, frame_bytes, conf=0.5, tracking=False, tracker="bytetrack"):
+    def predict_frame_bytes(
+        self, frame_bytes, conf=0.5, tracking=False, tracker="bytetrack", classes=None
+    ):
         if tracking:
-            return self.tracking_service.track_frame_bytes(frame_bytes, conf, tracker)
-        return super().predict_frame_bytes(frame_bytes, conf)
+            return self.tracking_service.track_frame_bytes(
+                frame_bytes, conf, tracker, classes
+            )
+        return super().predict_frame_bytes(frame_bytes, conf, classes)
