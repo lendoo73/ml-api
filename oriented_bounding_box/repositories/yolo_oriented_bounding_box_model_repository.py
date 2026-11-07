@@ -1,6 +1,7 @@
 from collections import defaultdict
-from pathlib import Path
 import os
+from pathlib import Path
+from typing import Literal
 
 from object_detection.repositories.yolo_model_repository import YoloModelRepository
 from oriented_bounding_box.models.entities.oriented_detection import (
@@ -10,11 +11,24 @@ from oriented_bounding_box.models.entities.oriented_tracking_detection import (
     OrientedTrackingDetection,
 )
 
+OrientedDetectionModel = Literal["yolo26x-obb", "car-parking-lot"]
+MODEL_WEIGHT_PATHS = {
+    "yolo26x-obb": os.getenv(
+        "YOLO_ORIENTED_BOUNDING_BOX_MODEL",
+        str(Path(__file__).resolve().parent.parent / "weights" / "yolo26x-obb.pt"),
+    ),
+    "car-parking-lot": os.getenv(
+        "YOLO_CAR_PARKING_LOT_MODEL",
+        str(Path(__file__).resolve().parent.parent / "weights" / "yolo11l_car_parking_lot.pt"),
+    ),
+}
+
 
 class YoloOrientedBoundingBoxModelRepository(YoloModelRepository):
-    def __init__(self, model_path: str | None = None):
-        default = Path(__file__).resolve().parent.parent / "weights" / "yolo26x-obb.pt"
-        super().__init__(model_path or os.getenv("YOLO_ORIENTED_BOUNDING_BOX_MODEL", str(default)))
+    def __init__(
+        self, model: OrientedDetectionModel = "yolo26x-obb", model_path: str | None = None
+    ):
+        super().__init__(model_path or MODEL_WEIGHT_PATHS[model])
         self._tracking_trajectories = defaultdict(list)
 
     @staticmethod

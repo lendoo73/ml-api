@@ -1,4 +1,5 @@
 from segmentation.repositories.yolo_segmentation_model_repository import (
+    SegmentationModel,
     YoloSegmentationModelRepository,
 )
 from services.base_vision_service import BaseVisionService
@@ -6,8 +7,10 @@ from services.tracking_service import TrackingService
 
 
 class SegmentationService(BaseVisionService):
-    def __init__(self):
-        super().__init__(YoloSegmentationModelRepository())
+    def __init__(self, model: SegmentationModel = "yolo26x-seg"):
+        if model != "yolo26x-seg":
+            raise ValueError(f"Unsupported model for SegmentationService: {model}")
+        super().__init__(YoloSegmentationModelRepository(model=model))
         self.tracking_service = TrackingService(self.model_repository)
 
     def predict_frame_bytes(

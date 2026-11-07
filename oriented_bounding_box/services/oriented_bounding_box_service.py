@@ -5,13 +5,14 @@ from fastapi.concurrency import run_in_threadpool
 from services.base_vision_service import BaseVisionService
 from utils.video import download_video_to_temp, save_uploadfile_to_temp
 from oriented_bounding_box.repositories.yolo_oriented_bounding_box_model_repository import (
+    OrientedDetectionModel,
     YoloOrientedBoundingBoxModelRepository,
 )
 
 
 class OrientedBoundingBoxService(BaseVisionService):
-    def __init__(self):
-        super().__init__(YoloOrientedBoundingBoxModelRepository())
+    def __init__(self, model: OrientedDetectionModel = "yolo26x-obb"):
+        super().__init__(YoloOrientedBoundingBoxModelRepository(model))
 
     def predict_frame_bytes(self, frame_bytes, conf=0.5, tracking=False, tracker="bytetrack"):
         if tracking:

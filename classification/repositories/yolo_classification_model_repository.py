@@ -2,6 +2,7 @@ import os
 import tempfile
 import threading
 from pathlib import Path
+from typing import Literal
 
 import cv2
 import numpy as np
@@ -12,10 +13,24 @@ from classification.models.entities.classification import Classification
 
 
 default_model_path = Path(__file__).resolve().parent.parent / "weights" / "yolo26x-cls.pt"
+ClassificationModel = Literal["yolo26x-cls", "chest-xray", "weather"]
+MODEL_WEIGHT_PATHS = {
+    "yolo26x-cls": default_model_path,
+    "chest-xray": (
+        Path(__file__).resolve().parent.parent / "weights" / "yolo26x_chest_xray-cls.pt"
+    ),
+    "weather": (
+        Path(__file__).resolve().parent.parent / "weights" / "yolo26x_weather_cls.pt"
+    ),
+}
 
 class YoloClassificationModelRepository:
-    def __init__(self, model_path: str | Path = default_model_path):
-        self._model_path = str(model_path)
+    def __init__(
+        self,
+        model: ClassificationModel = "yolo26x-cls",
+        model_path: str | Path | None = None,
+    ):
+        self._model_path = str(model_path or MODEL_WEIGHT_PATHS[model])
         self._thread_models = threading.local()
 
     @property

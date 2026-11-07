@@ -1,12 +1,15 @@
 from segmentation.repositories.pothole_segmentation_repository import PotholeSegmentationRepository
 from segmentation.services.segmentation_service import SegmentationService
+from segmentation.repositories.yolo_segmentation_model_repository import SegmentationModel
 from services.tracking_service import TrackingService
 
 
 class PotholeSegmentationService(SegmentationService):
-    def __init__(self):
+    def __init__(self, model: SegmentationModel = "pothole"):
+        if model != "pothole":
+            raise ValueError(f"Unsupported model for PotholeSegmentationService: {model}")
         super().__init__()
-        self.model_repository = PotholeSegmentationRepository()
+        self.model_repository = PotholeSegmentationRepository(model=model)
         self.tracking_service = TrackingService(self.model_repository)
 
     def predict_frame(self, frame, output="json", plot_options=None, conf=0.5, **options):

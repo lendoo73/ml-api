@@ -122,24 +122,90 @@ def test_segmentation_webcam_returns_segmentations(client):
 
 def test_pothole_segmentation_contract_and_task_parameters_are_registered(client):
     paths = client.app.openapi()["paths"]
-    assert "/api/segmentation/pothole/predict" in paths
-    assert "/api/segmentation/pothole/predict/video" in paths
-    assert "/api/segmentation/pothole/predict/video/progress/{job_id}" in paths
-    params = {item["name"] for item in paths["/api/segmentation/pothole/predict"]["post"]["parameters"]}
+    assert "/api/segmentation/predict" in paths
+    assert "/api/segmentation/predict/video" in paths
+    assert "/api/segmentation/predict/video/progress/{job_id}" in paths
+    params = {item["name"] for item in paths["/api/segmentation/predict"]["post"]["parameters"]}
     assert {"conf", "imgsz", "classes", "max_det", "retina_masks"} <= params
+    model_parameter = next(
+        item for item in paths["/api/segmentation/predict"]["post"]["parameters"]
+        if item["name"] == "model"
+    )
+    assert model_parameter["schema"]["enum"] == ["yolo26x-seg", "brain-tumor", "pothole"]
     for method in ("post", "get"):
         video_params = {
             item["name"]
-            for item in paths["/api/segmentation/pothole/predict/video"][method]["parameters"]
+            for item in paths["/api/segmentation/predict/video"][method]["parameters"]
         }
         assert {"tracking", "tracker"} <= video_params
+        models = next(
+            item["schema"]["enum"]
+            for item in paths["/api/segmentation/predict/video"][method]["parameters"]
+            if item["name"] == "model"
+        )
+        assert models == ["yolo26x-seg", "pothole"]
 
 
 def test_pothole_segmentation_rejects_invalid_confidence(client):
     response = client.get(
-        "/api/segmentation/pothole/predict",
-        params={"source": REMOTE_IMAGE_URL, "conf": 2},
+        "/api/segmentation/predict",
+        params={"source": REMOTE_IMAGE_URL, "conf": 2, "model": "pothole"},
     )
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("model", "weight_filename"),
+    [
+        ("yolo26x-seg", "yolo26x-seg.pt"),
+        ("brain-tumor", "yolo26x-brain_tumor-seg.pt"),
+        ("pothole", "yolo26x_pothole_segmentation.pt"),
+    ],
+)
+def test_segmentation_model_selects_configured_weights(model, weight_filename):
+    from segmentation.controllers.segmentation_rest_controller import get_image_service
+
+    service = get_image_service(model)
+
+    assert Path(service.model_repository._model_path).name == weight_filename
+
+
+def test_brain_tumor_rejects_class_filtering(client):
+    response = client.get(
+        "/api/segmentation/predict",
+        params={
+            "source": REMOTE_IMAGE_URL,
+            "model": "brain-tumor",
+            "classes": "0",
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_pothole_rejects_class_names(client):
+    response = client.get(
+        "/api/segmentation/predict",
+        params={
+            "source": REMOTE_IMAGE_URL,
+            "model": "pothole",
+            "classes": "pothole",
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_segmentation_rejects_pothole_options_for_other_models(client):
+    response = client.get(
+        "/api/segmentation/predict",
+        params={
+            "source": REMOTE_IMAGE_URL,
+            "model": "yolo26x-seg",
+            "imgsz": 320,
+        },
+    )
+
     assert response.status_code == 422
 
 
@@ -163,10 +229,15 @@ def test_tracking_webcam_returns_track_ids(client, endpoint):
 def test_brain_tumor_segmentation_routes_are_registered(client):
     paths = client.app.openapi()["paths"]
 
-    assert "/api/segmentation/brain_tumor/predict" in paths
-    assert "/api/segmentation/brain_tumor/predict/batch" in paths
-    assert "/api/segmentation/brain_tumor/predict/batch/progress/{job_id}" in paths
-    assert "/api/segmentation/brain_tumor/predict/video" not in paths
+    assert "/api/segmentation/predict" in paths
+    assert "/api/segmentation/predict/batch" in paths
+    assert "/api/segmentation/predict/batch/progress/{job_id}" in paths
+    video_models = next(
+        item["schema"]["enum"]
+        for item in paths["/api/segmentation/predict/video"]["post"]["parameters"]
+        if item["name"] == "model"
+    )
+    assert "brain-tumor" not in video_models
 
 
 def test_object_detection_model_selector_is_registered(client):
@@ -210,11 +281,51 @@ def test_object_detection_rejects_unsupported_model(client):
     assert response.status_code == 422
 
 
-def test_chest_xray_classification_routes_are_registered(client):
+def test_classification_model_selector_respects_source_support(client):
     paths = client.app.openapi()["paths"]
+    image_models = {
+        parameter["name"]: parameter
+        for parameter in paths["/api/classification/predict"]["post"]["parameters"]
+    }["model"]["schema"]["enum"]
+    video_models = {
+        parameter["name"]: parameter
+        for parameter in paths["/api/classification/predict/video"]["post"]["parameters"]
+    }["model"]["schema"]["enum"]
 
-    assert "/api/classification/chest_xray/predict" in paths
-    assert "/api/classification/chest_xray/predict/video" not in paths
+    assert image_models == ["yolo26x-cls", "chest-xray", "weather"]
+    assert video_models == ["yolo26x-cls", "weather"]
+    assert "/api/classification/chest_xray/predict" not in paths
+    assert "/api/classification/weather/predict" not in paths
+
+
+@pytest.mark.parametrize(
+    ("model", "weight_filename"),
+    [
+        ("yolo26x-cls", "yolo26x-cls.pt"),
+        ("chest-xray", "yolo26x_chest_xray-cls.pt"),
+        ("weather", "yolo26x_weather_cls.pt"),
+    ],
+)
+def test_classification_model_selects_configured_weights(model, weight_filename):
+    from classification.controllers.classification_rest_controller import (
+        get_image_service,
+    )
+
+    service = get_image_service(model)
+
+    assert Path(service.model_repository._model_path).name == weight_filename
+
+
+def test_chest_xray_model_is_rejected_for_video_prediction(client):
+    response = client.get(
+        "/api/classification/predict/video",
+        params={
+            "source": "https://example.com/video.mp4",
+            "model": "chest-xray",
+        },
+    )
+
+    assert response.status_code == 422
 
 
 @pytest.mark.parametrize(
@@ -246,13 +357,15 @@ def test_video_endpoints_return_rendered_videos(client, short_video, endpoint, f
         ("/api/segmentation/predict/video", "source"),
     ],
 )
-def test_video_url_prediction_endpoints_return_frame_results(client, endpoint, parameter):
+def test_video_url_prediction_endpoints_submit_jobs(client, endpoint, parameter):
     response = client.get(endpoint, params={parameter: REMOTE_VIDEO_URL})
 
     assert response.status_code == 200, response.text
     payload = response.json()
-    assert isinstance(payload, list)
-    assert payload
+    assert set(payload) == {"job_id"}
+    from services.video_job_manager import video_job_manager
+
+    assert video_job_manager.get(payload["job_id"]) is not None
 
 
 @pytest.mark.parametrize(
@@ -279,7 +392,7 @@ def test_remote_image_prediction_endpoints_return_predictions(client, endpoint):
         ("/api/segmentation/predict/video", "source", "video/mp4"),
     ],
 )
-def test_video_prediction_endpoints_return_frame_results(client, short_video, endpoint, field, content_type):
+def test_video_prediction_endpoints_submit_jobs(client, short_video, endpoint, field, content_type):
     with short_video.open("rb") as video:
         response = client.post(
             endpoint,
@@ -287,7 +400,11 @@ def test_video_prediction_endpoints_return_frame_results(client, short_video, en
         )
 
     assert response.status_code == 200, response.text
-    assert isinstance(response.json(), list)
+    payload = response.json()
+    assert set(payload) == {"job_id"}
+    from services.video_job_manager import video_job_manager
+
+    assert video_job_manager.get(payload["job_id"]) is not None
 
 
 def test_media_search_rejects_empty_query_without_external_provider(client):
@@ -480,7 +597,7 @@ def test_segmentation_endpoints_do_not_expose_txt_color(client):
     for path, method in (
         ("/api/segmentation/predict", "get"),
         ("/api/segmentation/predict", "post"),
-        ("/api/segmentation/brain_tumor/predict", "post"),
+        ("/api/segmentation/predict/batch", "post"),
     ):
         parameter_names = {
             parameter["name"]

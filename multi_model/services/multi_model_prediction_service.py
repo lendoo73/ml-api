@@ -11,12 +11,7 @@ import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from classification.services.classification_service import ClassificationService
-from classification.services.chest_xray_classification_service import (
-    ChestXrayClassificationService,
-)
-from classification.services.weather_classification_service import WeatherClassificationService
 from object_detection.services.object_detection_service import ObjectDetectionService
-from oriented_bounding_box.services.car_parking_lot_service import CarParkingLotService
 from oriented_bounding_box.services.oriented_bounding_box_service import (
     OrientedBoundingBoxService,
 )
@@ -118,19 +113,19 @@ MODEL_SPECS = {
         BrainTumorSegmentationService, SegmentationOptions, "segmentation"
     ),
     ModelId.CLASSIFICATION.value: ModelSpec(
-        ClassificationService, ClassificationOptions, "standard"
+        ClassificationService, ClassificationOptions, "standard", {"model": "yolo26x-cls"}
     ),
     ModelId.CHEST_XRAY_CLASSIFICATION.value: ModelSpec(
-        ChestXrayClassificationService, ClassificationOptions, "standard"
+        ClassificationService, ClassificationOptions, "standard", {"model": "chest-xray"}
     ),
     ModelId.WEATHER_CLASSIFICATION.value: ModelSpec(
-        WeatherClassificationService, ClassificationOptions, "standard"
+        ClassificationService, ClassificationOptions, "standard", {"model": "weather"}
     ),
     ModelId.ORIENTED_BOUNDING_BOX.value: ModelSpec(
-        OrientedBoundingBoxService, OrientedBoxOptions, "oriented"
+        OrientedBoundingBoxService, OrientedBoxOptions, "oriented", {"model": "yolo26x-obb"}
     ),
     ModelId.CAR_PARKING_LOT.value: ModelSpec(
-        CarParkingLotService, OrientedBoxOptions, "oriented"
+        OrientedBoundingBoxService, OrientedBoxOptions, "oriented", {"model": "car-parking-lot"}
     ),
 }
 

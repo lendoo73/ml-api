@@ -6,15 +6,34 @@ from pathlib import Path
 import cv2
 import numpy as np
 import threading
+from typing import Literal
 from ultralytics import YOLO
 
 from segmentation.models.entities.segmentation import Segmentation
 
 
+SegmentationModel = Literal["yolo26x-seg", "brain-tumor", "pothole"]
+MODEL_WEIGHT_PATHS = {
+    "yolo26x-seg": os.getenv(
+        "YOLO_SEGMENTATION_MODEL",
+        str(Path(__file__).resolve().parent.parent / "weights" / "yolo26x-seg.pt"),
+    ),
+    "brain-tumor": str(
+        Path(__file__).resolve().parent.parent / "weights" / "yolo26x-brain_tumor-seg.pt"
+    ),
+    "pothole": str(
+        Path(__file__).resolve().parent.parent / "weights" / "yolo26x_pothole_segmentation.pt"
+    ),
+}
+
+
 class YoloSegmentationModelRepository:
-    def __init__(self, model_path: str | None = None):
-        default_model_path = Path(__file__).resolve().parent.parent / "weights" / "yolo26x-seg.pt"
-        self._model_path = model_path or os.getenv("YOLO_SEGMENTATION_MODEL", str(default_model_path))
+    def __init__(
+        self,
+        model: SegmentationModel = "yolo26x-seg",
+        model_path: str | None = None,
+    ):
+        self._model_path = model_path or MODEL_WEIGHT_PATHS[model]
         self._thread_models = threading.local()
 
     @property
