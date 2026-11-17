@@ -4,3 +4,13 @@ __pycache__/
 
 log/
 *.log
+AGENTS.md
+CLAUDE.md
+CURSOR.md
+OPENAI.md
+COPILOT.md
+GEMINI.md
+AI.md
+AI_INSTRUCTIONS.md
+*.instructions.md
+face_swap/weights/

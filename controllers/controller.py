@@ -9,6 +9,7 @@ from oriented_bounding_box.controllers import oriented_bounding_box_rest_control
 from segmentation.controllers import segmentation_rest_controller
 from tcia.controllers import tcia_brain_scan_rest_controller
 from mail.controllers import mail_rest_controller
+from face_swap.controllers import face_swap_rest_controller
 
 api_router = APIRouter()
 api_router.include_router(object_detection_rest_controller.router)
@@ -20,3 +21,4 @@ api_router.include_router(tcia_brain_scan_rest_controller.router)
 api_router.include_router(pose_estimation_rest_controller.router)
 api_router.include_router(oriented_bounding_box_rest_controller.router)
 api_router.include_router(mail_rest_controller.router)
+api_router.include_router(face_swap_rest_controller.router)

@@ -18,6 +18,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends  \
 
 WORKDIR /app
 
+RUN mkdir -p /app/face_swap/weights \
+  && chown -R fastapiuser:fastapigroup /app/face_swap
+
 COPY requirements.txt .
 RUN python -m pip install --upgrade pip \
   && python -m pip install --no-cache-dir -r requirements.txt

@@ -1,6 +1,9 @@
 services:
     api:
-        image: lendoo73/ml-api:latest
+        image: lendoo73/ml-api:gpu
+        build:
+          context: ..
+          dockerfile: Dockerfile
         ports:
           - "8002:8000"
         working_dir: /app
@@ -9,4 +12,15 @@ services:
         volumes:
           - ./log/:/app/log
           - ./config.json:/app/build/config.json
+          - face_swap_model_weights:/app/face_swap/weights
+        deploy:
+          resources:
+            reservations:
+              devices:
+                - driver: nvidia
+                  count: all
+                  capabilities: [gpu]
         command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+volumes:
+    face_swap_model_weights:

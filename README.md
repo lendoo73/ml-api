@@ -1,26 +1,29 @@
 # Machine Learning FastAPI back-end
 
-## Deploy Using Docker
+## Deploy Using Docker with NVIDIA GPU
 
 ### Prerequisites
 
-Docker Desktop installed on your machine  
-👉 https://docs.docker.com/desktop/
+Docker Desktop with NVIDIA GPU access enabled, an NVIDIA driver, and the NVIDIA
+Container Toolkit (or the equivalent GPU support for your Docker host).
 
 ---
 
 ### Steps
 
-1. Copy the /deploy folder from this repository to your local machine.
-2. Open a terminal and navigate into the copied folder:
+1. Clone this repository and open a terminal in its `deploy` folder:
 ```shell
-cd path/to/deploy
+cd path/to/ml-api/deploy
 ```
-3. Start the container:
+2. Build the CUDA-enabled image and start the container:
 ```shell
-docker compose up -d
+docker compose up --build -d
 ```
-4. Open the application in your browser:  
+3. Confirm that PyTorch can see the GPU:
+```shell
+docker compose exec api python -c "import torch; print(torch.__version__, torch.version.cuda, torch.cuda.is_available())"
+```
+The final value should be `True`. Open the application in your browser:
 👉 http://localhost:8002/
 
 The[web UI](https://github.com/lendoo73/ml-react) is served by FastAPI from the /build directory  
@@ -56,3 +59,46 @@ curl -X POST --url-query 'angles=[["left_shoulder","left_elbow","left_wrist"],["
 ```
 
 Video JSON predictions run as background jobs. The response contains a `job_id`; use `/api/pose_estimation/predict/video/progress/{job_id}` to receive progress and the completed per-frame results.
+
+## Face swapping
+
+The face-swap endpoints use the BFS head-swap LoRA and Viggle turbo adapter with
+Qwen-Image-2.1. The image endpoint accepts `source` (portrait) and `target`
+(target image) multipart fields and returns a JPEG. The video endpoint accepts
+`source` and `target_video` multipart fields, processes frames sequentially, and
+returns an MP4 with the original audio when present. The webcam WebSocket expects
+the portrait as its first binary message, then target frames as binary messages;
+each prediction is returned as a JPEG binary message. All three endpoints accept
+the `model` query parameter:
+
+- `qwen-image-2.1-bf16-local` (default) runs the existing Diffusers backend.
+- `qwen-image-2.1-gguf-q3-k-xl-local` runs the Q3_K_XL GGUF through
+  `stable-diffusion.cpp`, with CPU offload enabled.
+
+Use `POST /api/face_swap/predict/image?model=qwen-image-2.1-bf16-local` or
+`POST /api/face_swap/predict/video?model=qwen-image-2.1-gguf-q3-k-xl-local`.
+Connect to `ws://<host>/api/face_swap/predict/webcam?model=qwen-image-2.1-gguf-q3-k-xl-local`
+for webcam frames.
+
+The BF16 backend requires a CUDA-enabled GPU and compatible CUDA-enabled PyTorch.
+The GGUF backend requires a separately installed `sd-server` executable from
+`stable-diffusion.cpp`; set `FACE_SWAP_SD_CPP_SERVER_PATH` to its path, or put it
+on `PATH`. It starts the server on first use, downloads missing model assets
+from Hugging Face, and stores them under
+`face_swap/weights/qwen-image-2.1-gguf-q3-k-xl-local/` (ignored by Git). Set
+`FACE_SWAP_SD_CPP_URL` to use an already-running compatible server instead; that
+server must have the matching model and both LoRAs available. Optional settings
+are `FACE_SWAP_SD_CPP_PORT` (default `1235`),
+`FACE_SWAP_SD_CPP_STARTUP_TIMEOUT` (default `900` seconds), and
+`FACE_SWAP_SD_CPP_TIMEOUT` (default `1800` seconds per generation).
+
+On the available 4 GB RTX 500 Ada Laptop GPU, one 512×512 test image took about
+80 seconds with CPU offload. The GGUF backend limits generated images to about
+512×512 pixels to fit this GPU; video frames are resized back to the source
+resolution after generation. A webcam or video request processes frames
+sequentially and is not real-time on that hardware. The runtime binary is not
+included in the API Docker image, so configure it in the container or provide an
+external `FACE_SWAP_SD_CPP_URL` before selecting the GGUF backend. The base Qwen
+model and adapters have separate license terms, including non-commercial
+research/evaluation restrictions; check the model cards before redistribution
+or deployment. Use only media for which you have permission.
