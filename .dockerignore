@@ -14,3 +14,5 @@ AI.md
 AI_INSTRUCTIONS.md
 *.instructions.md
 **/weights/
+/weights/
+face_swap.mp4
