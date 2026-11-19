@@ -1,6 +1,8 @@
 FROM nvidia/cuda:12.8.1-devel-ubuntu24.04 AS sd-server-build
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN sed -i 's|http://security.ubuntu.com|https://security.ubuntu.com|g' \
+    /etc/apt/sources.list.d/ubuntu.sources \
+  && apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     ca-certificates \
     cmake \
