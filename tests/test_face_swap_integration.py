@@ -1,18 +1,16 @@
 import json
-from io import BytesIO
 from pathlib import Path
-import shutil
 
-import cv2
-import numpy as np
 import pytest
 from fastapi.testclient import TestClient
-from PIL import Image
 from starlette.websockets import WebSocketDisconnect
 
 from controllers.controller import api_router
 from face_swap.controllers import face_swap_rest_controller
-from face_swap.controllers.face_swap_rest_controller import get_service
+from face_swap.controllers.face_swap_rest_controller import (
+    get_service,
+    get_video_service,
+)
 from face_swap.models.face_swap_model import (
     QWEN_IMAGE_21_GGUF_Q3_K_XL_LOCAL_FACE_SWAP_MODEL,
 )
@@ -34,13 +32,6 @@ class FakeFaceSwapService(FaceSwapService):
         self.decode_reference_image(reference_bytes)
         return b"swapped-image"
 
-    def swap_video(self, reference_bytes, video_path, progress_callback=None):
-        if progress_callback:
-            progress_callback(1, 1)
-        output_path = str(Path(video_path).with_name("fake-face-swap.mp4"))
-        Path(output_path).write_bytes(b"swapped-video")
-        return output_path
-
     def decode_reference_image(self, image_bytes):
         if image_bytes == b"invalid":
             raise ValueError("Invalid portrait image.")
@@ -48,6 +39,15 @@ class FakeFaceSwapService(FaceSwapService):
 
     def swap_frame(self, reference, frame_bytes):
         return b"swapped-frame"
+
+
+class FakeFaceSwapVideoService:
+    def swap_video(self, reference_bytes, video_path, progress_callback=None):
+        if progress_callback:
+            progress_callback(1, 1)
+        output_path = str(Path(video_path).with_name("fake-face-swap.mp4"))
+        Path(output_path).write_bytes(b"swapped-video")
+        return output_path
 
 
 def test_face_swap_routes_are_registered():
@@ -97,16 +97,24 @@ def test_face_swap_image_rejects_invalid_portrait(monkeypatch):
 
 def test_face_swap_model_parameter_is_limited_to_available_models():
     paths = app.openapi()["paths"]
-    for path in ("/api/face_swap/predict/image", "/api/face_swap/predict/video"):
-        parameters = paths[path]["post"]["parameters"]
-        model_parameter = next(
-            parameter for parameter in parameters if parameter["name"] == "model"
-        )
-        assert model_parameter["schema"]["enum"] == [
-            "qwen-image-2.1-bf16-local",
-            "qwen-image-2.1-gguf-q3-k-xl-local",
-            "qwen-image-2.1-huggingface-space",
-        ]
+    parameters = paths["/api/face_swap/predict/image"]["post"]["parameters"]
+    model_parameter = next(
+        parameter for parameter in parameters if parameter["name"] == "model"
+    )
+    assert model_parameter["schema"]["enum"] == [
+        "qwen-image-2.1-bf16-local",
+        "qwen-image-2.1-gguf-q3-k-xl-local",
+        "qwen-image-2.1-huggingface-space",
+    ]
+    video_model_parameter = next(
+        parameter
+        for parameter in paths["/api/face_swap/predict/video"]["post"]["parameters"]
+        if parameter["name"] == "model"
+    )
+    assert app.openapi()["components"]["schemas"]["FaceSwapVideoModel"]["enum"] == [
+        "facefusion-3.9.2-local"
+    ]
+    assert video_model_parameter["schema"]["default"] == "facefusion-3.9.2-local"
 
     response = TestClient(app).post(
         "/api/face_swap/predict/image?model=unknown",
@@ -147,11 +155,11 @@ def test_face_swap_weight_directories_use_the_shared_model_weights_root():
 
 
 def test_face_swap_video_endpoint_returns_job_and_result():
-    app.dependency_overrides[get_service] = FakeFaceSwapService
+    app.dependency_overrides[get_video_service] = FakeFaceSwapVideoService
     try:
         with TestClient(app) as client:
             response = client.post(
-                "/api/face_swap/predict/video",
+                "/api/face_swap/predict/video?model=facefusion-3.9.2-local",
                 files={
                     "source": ("portrait.jpg", b"portrait", "image/jpeg"),
                     "target_video": ("target.mp4", b"video", "video/mp4"),
@@ -174,7 +182,7 @@ def test_face_swap_video_endpoint_returns_job_and_result():
 
             result = client.get(completed["result"]["download_url"])
     finally:
-        app.dependency_overrides.pop(get_service, None)
+        app.dependency_overrides.pop(get_video_service, None)
 
     assert progress.status_code == 200
     assert result.status_code == 200
@@ -182,12 +190,24 @@ def test_face_swap_video_endpoint_returns_job_and_result():
     assert result.content == b"swapped-video"
 
 
+def test_face_swap_video_endpoint_rejects_unknown_model():
+    response = TestClient(app).post(
+        "/api/face_swap/predict/video?model=unknown",
+        files={
+            "source": ("portrait.jpg", b"portrait", "image/jpeg"),
+            "target_video": ("target.mp4", b"video", "video/mp4"),
+        },
+    )
+
+    assert response.status_code == 422
+
+
 def test_face_swap_video_job_reports_failure():
-    class FailingFaceSwapService(FakeFaceSwapService):
+    class FailingFaceSwapService(FakeFaceSwapVideoService):
         def swap_video(self, reference_bytes, video_path, progress_callback=None):
             raise ValueError("Could not open target video.")
 
-    app.dependency_overrides[get_service] = FailingFaceSwapService
+    app.dependency_overrides[get_video_service] = FailingFaceSwapService
     try:
         with TestClient(app) as client:
             response = client.post(
@@ -207,7 +227,7 @@ def test_face_swap_video_job_reports_failure():
             failed = next(event for event in reversed(events) if event["status"] == "failed")
             result = client.get(f"/api/face_swap/predict/video/result/{job_id}")
     finally:
-        app.dependency_overrides.pop(get_service, None)
+        app.dependency_overrides.pop(get_video_service, None)
 
     assert response.status_code == 200
     assert failed["error"] == "Could not open target video."
@@ -239,37 +259,3 @@ def test_face_swap_webcam_rejects_unknown_model():
             pass
 
     assert error.value.code == 1008
-
-
-def test_face_swap_video_service_processes_frames_and_writes_mp4(tmp_path):
-    if shutil.which("ffmpeg") is None:
-        pytest.skip("ffmpeg is required for video processing.")
-
-    input_path = tmp_path / "input.mp4"
-    writer = cv2.VideoWriter(
-        str(input_path),
-        cv2.VideoWriter_fourcc(*"mp4v"),
-        5.0,
-        (64, 64),
-    )
-    assert writer.isOpened()
-    writer.write(np.zeros((64, 64, 3), dtype=np.uint8))
-    writer.write(np.full((64, 64, 3), 127, dtype=np.uint8))
-    writer.release()
-
-    portrait = BytesIO()
-    Image.new("RGB", (32, 32), color="blue").save(portrait, format="JPEG")
-    progress = []
-    output_path = FaceSwapService(FakeModelRepository()).swap_video(
-        portrait.getvalue(),
-        str(input_path),
-        lambda current, total: progress.append((current, total)),
-    )
-    try:
-        capture = cv2.VideoCapture(output_path)
-        assert capture.isOpened()
-        assert int(capture.get(cv2.CAP_PROP_FRAME_COUNT)) == 2
-        assert progress == [(1, 2), (2, 2)]
-        capture.release()
-    finally:
-        Path(output_path).unlink(missing_ok=True)

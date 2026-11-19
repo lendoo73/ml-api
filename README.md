@@ -11,12 +11,14 @@ Container Toolkit (or the equivalent GPU support for your Docker host).
 
 ### Steps
 
-1. Build the image from the repository root and push it to Docker Hub:
+1. Build and push both images from the repository root:
 
 ```shell
 docker login
 docker build -t lendoo73/ml-api:gpu -f Dockerfile .
 docker push lendoo73/ml-api:gpu
+docker build -t lendoo73/ml-rest-api-video-worker:1.0.0 -f face_swap_video_worker/Dockerfile .
+docker push lendoo73/ml-rest-api-video-worker:1.0.0
 ```
 
 2. On the NVIDIA-enabled desktop, clone the repository and open a terminal in
@@ -27,6 +29,14 @@ cd path/to/ml-api/deploy
 docker compose pull
 docker compose up -d
 ```
+
+The video worker uses FaceFusion 3.9.2 with CUDA and reference-based face tracking.
+Its model assets are stored in the same persistent `/app/weights` volume under
+`face-swap/facefusion`; the API calls the worker over the private Compose network.
+The image prediction endpoint continues to use the selected Qwen model.
+The default `inswapper_128` asset is listed as **Non-Commercial** in
+[FaceFusion's asset licenses](https://docs.facefusion.io/introduction/licenses);
+do not use it commercially without obtaining the required rights.
 3. Confirm that PyTorch can see the GPU:
 ```shell
 docker compose exec api python -c "import torch; print(torch.__version__, torch.version.cuda, torch.cuda.is_available())"
@@ -74,14 +84,11 @@ Video JSON predictions run as background jobs. The response contains a `job_id`;
 
 ## Face swapping
 
-The face-swap endpoints use the BFS head-swap LoRA and Viggle turbo adapter with
-Qwen-Image-2.1. The image endpoint accepts `source` (portrait) and `target`
-(target image) multipart fields and returns a JPEG. The video endpoint accepts
-`source` and `target_video` multipart fields, processes frames sequentially, and
-returns an MP4 with the original audio when present. The webcam WebSocket expects
-the portrait as its first binary message, then target frames as binary messages;
-each prediction is returned as a JPEG binary message. All three endpoints accept
-the `model` query parameter:
+The image endpoint accepts `source` (portrait) and `target` (target image)
+multipart fields and returns a JPEG. The webcam WebSocket expects the portrait
+as its first binary message, then target frames as binary messages; each
+prediction is returned as a JPEG binary message. The image and webcam endpoints
+accept the `model` query parameter:
 
 - `qwen-image-2.1-bf16-local` (default) runs the existing Diffusers backend.
 - `qwen-image-2.1-gguf-q3-k-xl-local` runs the Q3_K_XL GGUF through
@@ -94,8 +101,17 @@ the `model` query parameter:
   seconds). The hosted Space does not use this repository's local BFS/Viggle
   adapters, so its face-swap results may differ from the local backends.
 
+The video endpoint accepts `source` and `target_video` multipart fields and
+uses FaceFusion 3.9.2 with reference-face tracking. Its `model` query parameter
+currently has one option, `facefusion-3.9.2-local` (the default), indicating
+that prediction runs locally in the video-worker container. Video processing
+runs as a background job and returns a job ID for progress and result retrieval.
+The default `inswapper_128` asset is listed as **Non-Commercial** in
+[FaceFusion's asset licenses](https://docs.facefusion.io/introduction/licenses);
+do not use it commercially without obtaining the required rights.
+
 Use `POST /api/face_swap/predict/image?model=qwen-image-2.1-bf16-local` or
-`POST /api/face_swap/predict/video?model=qwen-image-2.1-gguf-q3-k-xl-local`.
+`POST /api/face_swap/predict/video?model=facefusion-3.9.2-local`.
 Connect to `ws://<host>/api/face_swap/predict/webcam?model=qwen-image-2.1-gguf-q3-k-xl-local`
 for webcam frames.
 
@@ -114,9 +130,8 @@ are `FACE_SWAP_SD_CPP_PORT` (default `1235`),
 
 On the available 4 GB RTX 500 Ada Laptop GPU, one 512×512 test image took about
 80 seconds with CPU offload. The GGUF backend limits generated images to about
-512×512 pixels to fit this GPU; video frames are resized back to the source
-resolution after generation. A webcam or video request processes frames
-sequentially and is not real-time on that hardware. The Docker host must provide NVIDIA GPU support and a compatible NVIDIA driver.
+512×512 pixels to fit this GPU. The Docker host must provide NVIDIA GPU support
+and a compatible NVIDIA driver.
 To use a separately managed server instead, set `FACE_SWAP_SD_CPP_URL` to its
 reachable URL. The base Qwen
 model and adapters have separate license terms, including non-commercial

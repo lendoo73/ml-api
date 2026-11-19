@@ -1,6 +1,6 @@
 services:
     api:
-        image: lendoo73/ml-api:gpu
+        image: lendoo73/ml-rest-api:1.0.0
         ports:
           - "8002:8000"
         working_dir: /app
@@ -8,12 +8,38 @@ services:
           - sample.env
         environment:
           MODEL_WEIGHTS_DIR: /app/weights
+          FACE_SWAP_VIDEO_WORKER_URL: http://face-swap-video-worker:8001
         volumes:
           - ./log/:/app/log
           - ./config.json:/app/build/config.json
           - model_weights:/app/weights
         gpus: all
+        depends_on:
+          face-swap-video-worker:
+            condition: service_healthy
         command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+    face-swap-video-worker:
+        image: lendoo73/ml-rest-api-video-worker:1.0.0
+        build:
+          context: ..
+          dockerfile: face_swap_video_worker/Dockerfile
+        environment:
+          MODEL_WEIGHTS_DIR: /app/weights
+          FACE_SWAP_VIDEO_MODEL: inswapper_128
+        volumes:
+          - model_weights:/app/weights
+        gpus: all
+        restart: unless-stopped
+        healthcheck:
+          test:
+            - CMD
+            - /opt/worker-venv/bin/python
+            - -c
+            - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health').read()"
+          interval: 30s
+          timeout: 5s
+          retries: 3
 
 volumes:
     model_weights:

@@ -19,7 +19,12 @@ from face_swap.models.face_swap_model import (
     FaceSwapModel,
     QWEN_IMAGE_21_BF16_LOCAL_FACE_SWAP_MODEL,
 )
+from face_swap.models.face_swap_video_model import (
+    FACEFUSION_3_9_2_LOCAL_VIDEO_MODEL,
+    FaceSwapVideoModel,
+)
 from face_swap.services.face_swap_service import FaceSwapService
+from face_swap.services.face_swap_video_service import FaceSwapVideoService
 from services.video_job_manager import video_job_manager
 from utils.execution_time import execution_time
 from utils.video import save_uploadfile_to_temp
@@ -47,6 +52,11 @@ def get_service(
     return _cached_service(model)
 
 
+@lru_cache(maxsize=1)
+def get_video_service() -> FaceSwapVideoService:
+    return FaceSwapVideoService()
+
+
 router = APIRouter(prefix="/face_swap", tags=["face swap"])
 
 
@@ -68,12 +78,25 @@ async def predict_image(
     return Response(content=image_bytes, media_type="image/jpeg")
 
 
-@router.post("/predict/video")
+@router.post(
+    "/predict/video",
+    summary="FaceFusion video face swap",
+    description=(
+        "FaceFusion video swap using reference-face tracking. Qwen image models "
+        "are used only by the image and webcam endpoints."
+    ),
+)
 @execution_time("Face swap video execution time:")
 async def predict_video(
     source: UploadFile = File(..., description="Portrait whose head will be transferred."),
     target_video: UploadFile = File(..., description="Target video whose head will be replaced."),
-    service: FaceSwapService = Depends(get_service),
+    model: FaceSwapVideoModel = Query(
+        FACEFUSION_3_9_2_LOCAL_VIDEO_MODEL,
+        description=(
+            "Video face-swap model to use. Currently available: facefusion-3.9.2-local."
+        ),
+    ),
+    service: FaceSwapVideoService = Depends(get_video_service),
 ):
     reference_bytes = await source.read()
     video_path = await save_uploadfile_to_temp(target_video)
