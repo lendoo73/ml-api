@@ -1,3 +1,4 @@
+import json
 from io import BytesIO
 from pathlib import Path
 import shutil
@@ -33,7 +34,9 @@ class FakeFaceSwapService(FaceSwapService):
         self.decode_reference_image(reference_bytes)
         return b"swapped-image"
 
-    def swap_video(self, reference_bytes, video_path):
+    def swap_video(self, reference_bytes, video_path, progress_callback=None):
+        if progress_callback:
+            progress_callback(1, 1)
         output_path = str(Path(video_path).with_name("fake-face-swap.mp4"))
         Path(output_path).write_bytes(b"swapped-video")
         return output_path
@@ -51,6 +54,8 @@ def test_face_swap_routes_are_registered():
     paths = {route.path for route in api_router.routes}
     assert "/face_swap/predict/image" in paths
     assert "/face_swap/predict/video" in paths
+    assert "/face_swap/predict/video/progress/{job_id}" in paths
+    assert "/face_swap/predict/video/result/{job_id}" in paths
     assert "/face_swap/predict/webcam" in paths
 
 
@@ -100,6 +105,7 @@ def test_face_swap_model_parameter_is_limited_to_available_models():
         assert model_parameter["schema"]["enum"] == [
             "qwen-image-2.1-bf16-local",
             "qwen-image-2.1-gguf-q3-k-xl-local",
+            "qwen-image-2.1-huggingface-space",
         ]
 
     response = TestClient(app).post(
@@ -127,22 +133,85 @@ def test_face_swap_service_selects_gguf_repository(monkeypatch):
     assert service.model_repository is repository
 
 
-def test_face_swap_video_endpoint_returns_mp4():
+def test_face_swap_weight_directories_use_the_shared_model_weights_root():
+    from face_swap.repositories.qwen_image_21_bf16_local_face_swap_repository import (
+        WEIGHTS_DIR as bf16_weights_dir,
+    )
+    from face_swap.repositories.qwen_image_21_gguf_q3_k_xl_local_face_swap_repository import (
+        WEIGHTS_DIR as gguf_weights_dir,
+    )
+
+    assert bf16_weights_dir.parent.name == "face-swap"
+    assert gguf_weights_dir.parent.name == "face-swap"
+    assert bf16_weights_dir.parent.parent == gguf_weights_dir.parent.parent
+
+
+def test_face_swap_video_endpoint_returns_job_and_result():
     app.dependency_overrides[get_service] = FakeFaceSwapService
     try:
-        response = TestClient(app).post(
-            "/api/face_swap/predict/video",
-            files={
-                "source": ("portrait.jpg", b"portrait", "image/jpeg"),
-                "target_video": ("target.mp4", b"video", "video/mp4"),
-            },
-        )
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/face_swap/predict/video",
+                files={
+                    "source": ("portrait.jpg", b"portrait", "image/jpeg"),
+                    "target_video": ("target.mp4", b"video", "video/mp4"),
+                },
+            )
+            assert response.status_code == 200
+            job_id = response.json()["job_id"]
+
+            progress = client.get(f"/api/face_swap/predict/video/progress/{job_id}")
+            events = [
+                json.loads(line[6:])
+                for line in progress.text.splitlines()
+                if line.startswith("data: ")
+            ]
+            completed = next(event for event in reversed(events) if event["status"] == "completed")
+            assert completed["progress"] == 100
+            assert completed["result"] == {
+                "download_url": f"/api/face_swap/predict/video/result/{job_id}"
+            }
+
+            result = client.get(completed["result"]["download_url"])
+    finally:
+        app.dependency_overrides.pop(get_service, None)
+
+    assert progress.status_code == 200
+    assert result.status_code == 200
+    assert result.headers["content-type"] == "video/mp4"
+    assert result.content == b"swapped-video"
+
+
+def test_face_swap_video_job_reports_failure():
+    class FailingFaceSwapService(FakeFaceSwapService):
+        def swap_video(self, reference_bytes, video_path, progress_callback=None):
+            raise ValueError("Could not open target video.")
+
+    app.dependency_overrides[get_service] = FailingFaceSwapService
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/face_swap/predict/video",
+                files={
+                    "source": ("portrait.jpg", b"portrait", "image/jpeg"),
+                    "target_video": ("target.mp4", b"video", "video/mp4"),
+                },
+            )
+            job_id = response.json()["job_id"]
+            progress = client.get(f"/api/face_swap/predict/video/progress/{job_id}")
+            events = [
+                json.loads(line[6:])
+                for line in progress.text.splitlines()
+                if line.startswith("data: ")
+            ]
+            failed = next(event for event in reversed(events) if event["status"] == "failed")
+            result = client.get(f"/api/face_swap/predict/video/result/{job_id}")
     finally:
         app.dependency_overrides.pop(get_service, None)
 
     assert response.status_code == 200
-    assert response.headers["content-type"] == "video/mp4"
-    assert response.content == b"swapped-video"
+    assert failed["error"] == "Could not open target video."
+    assert result.status_code == 409
 
 
 def test_face_swap_webcam_receives_portrait_then_streams_frames(monkeypatch):
@@ -190,14 +259,17 @@ def test_face_swap_video_service_processes_frames_and_writes_mp4(tmp_path):
 
     portrait = BytesIO()
     Image.new("RGB", (32, 32), color="blue").save(portrait, format="JPEG")
+    progress = []
     output_path = FaceSwapService(FakeModelRepository()).swap_video(
         portrait.getvalue(),
         str(input_path),
+        lambda current, total: progress.append((current, total)),
     )
     try:
         capture = cv2.VideoCapture(output_path)
         assert capture.isOpened()
         assert int(capture.get(cv2.CAP_PROP_FRAME_COUNT)) == 2
+        assert progress == [(1, 2), (2, 2)]
         capture.release()
     finally:
         Path(output_path).unlink(missing_ok=True)

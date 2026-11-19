@@ -12,6 +12,7 @@ from face_swap.models.face_swap_model import (
     FaceSwapModel,
     QWEN_IMAGE_21_BF16_LOCAL_FACE_SWAP_MODEL,
     QWEN_IMAGE_21_GGUF_Q3_K_XL_LOCAL_FACE_SWAP_MODEL,
+    QWEN_IMAGE_21_HUGGINGFACE_SPACE_FACE_SWAP_MODEL,
 )
 from face_swap.repositories.qwen_image_21_gguf_q3_k_xl_local_face_swap_repository import (
     QwenImage21GgufQ3KxlLocalFaceSwapRepository,
@@ -19,12 +20,18 @@ from face_swap.repositories.qwen_image_21_gguf_q3_k_xl_local_face_swap_repositor
 from face_swap.repositories.qwen_image_21_bf16_local_face_swap_repository import (
     QwenImage21Bf16LocalFaceSwapRepository,
 )
+from face_swap.repositories.qwen_image_21_huggingface_space_face_swap_repository import (
+    QwenImage21HuggingFaceSpaceFaceSwapRepository,
+)
 
 
 _MODEL_REPOSITORY_FACTORIES = {
     QWEN_IMAGE_21_BF16_LOCAL_FACE_SWAP_MODEL: QwenImage21Bf16LocalFaceSwapRepository,
     QWEN_IMAGE_21_GGUF_Q3_K_XL_LOCAL_FACE_SWAP_MODEL: (
         QwenImage21GgufQ3KxlLocalFaceSwapRepository
+    ),
+    QWEN_IMAGE_21_HUGGINGFACE_SPACE_FACE_SWAP_MODEL: (
+        QwenImage21HuggingFaceSpaceFaceSwapRepository
     ),
 }
 
@@ -55,7 +62,12 @@ class FaceSwapService:
         target = self._decode_image(frame_bytes, "webcam frame")
         return self._encode_jpeg(self.model_repository.swap(target, reference))
 
-    def swap_video(self, reference_bytes: bytes, video_path: str) -> str:
+    def swap_video(
+        self,
+        reference_bytes: bytes,
+        video_path: str,
+        progress_callback=None,
+    ) -> str:
         reference = self.decode_reference_image(reference_bytes)
         capture = cv2.VideoCapture(video_path)
         if not capture.isOpened():
@@ -76,6 +88,7 @@ class FaceSwapService:
             fps,
             (width, height),
         )
+        total_frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT)) or None
         if not writer.isOpened():
             capture.release()
             writer.release()
@@ -94,6 +107,8 @@ class FaceSwapService:
                     swapped = swapped.resize((width, height), Image.Resampling.LANCZOS)
                     writer.write(cv2.cvtColor(np.asarray(swapped), cv2.COLOR_RGB2BGR))
                     processed_frames += 1
+                    if progress_callback:
+                        progress_callback(processed_frames, total_frames)
             finally:
                 capture.release()
                 writer.release()

@@ -11,13 +11,21 @@ Container Toolkit (or the equivalent GPU support for your Docker host).
 
 ### Steps
 
-1. Clone this repository and open a terminal in its `deploy` folder:
+1. Build the image from the repository root and push it to Docker Hub:
+
+```shell
+docker login
+docker build -t lendoo73/ml-api:gpu -f Dockerfile .
+docker push lendoo73/ml-api:gpu
+```
+
+2. On the NVIDIA-enabled desktop, clone the repository and open a terminal in
+   its `deploy` folder to pull and start the published image:
+
 ```shell
 cd path/to/ml-api/deploy
-```
-2. Build the CUDA-enabled image and start the container:
-```shell
-docker compose up --build -d
+docker compose pull
+docker compose up -d
 ```
 3. Confirm that PyTorch can see the GPU:
 ```shell
@@ -25,6 +33,10 @@ docker compose exec api python -c "import torch; print(torch.__version__, torch.
 ```
 The final value should be `True`. Open the application in your browser:
 👉 http://localhost:8002/
+
+Downloaded model weights are stored under `/app/weights` and persisted in the
+`model_weights` Docker volume across container recreations. `docker compose down -v`
+also deletes this volume and its downloaded models.
 
 The[web UI](https://github.com/lendoo73/ml-react) is served by FastAPI from the /build directory  
 
@@ -74,6 +86,13 @@ the `model` query parameter:
 - `qwen-image-2.1-bf16-local` (default) runs the existing Diffusers backend.
 - `qwen-image-2.1-gguf-q3-k-xl-local` runs the Q3_K_XL GGUF through
   `stable-diffusion.cpp`, with CPU offload enabled.
+- `qwen-image-2.1-huggingface-space` uses the public [Qwen-Image-2.1 Hugging
+  Face Space](https://hugging-apps-qwen-image-2-1.hf.space/) API. It uploads
+  images to that Space for processing and may be slower or
+  unavailable when the shared free service is busy. Set
+  `FACE_SWAP_HF_SPACE_TIMEOUT` to change the generation timeout (default: 1800
+  seconds). The hosted Space does not use this repository's local BFS/Viggle
+  adapters, so its face-swap results may differ from the local backends.
 
 Use `POST /api/face_swap/predict/image?model=qwen-image-2.1-bf16-local` or
 `POST /api/face_swap/predict/video?model=qwen-image-2.1-gguf-q3-k-xl-local`.
@@ -81,9 +100,10 @@ Connect to `ws://<host>/api/face_swap/predict/webcam?model=qwen-image-2.1-gguf-q
 for webcam frames.
 
 The BF16 backend requires a CUDA-enabled GPU and compatible CUDA-enabled PyTorch.
-The GGUF backend requires a separately installed `sd-server` executable from
-`stable-diffusion.cpp`; set `FACE_SWAP_SD_CPP_SERVER_PATH` to its path, or put it
-on `PATH`. It starts the server on first use, downloads missing model assets
+When running outside Docker, the GGUF backend requires a `sd-server` executable
+from `stable-diffusion.cpp`; set `FACE_SWAP_SD_CPP_SERVER_PATH` to its path, or
+put it on `PATH`. The Docker image includes its own CUDA-enabled `sd-server`. It
+starts the server on first use, downloads missing model assets
 from Hugging Face, and stores them under
 `face_swap/weights/qwen-image-2.1-gguf-q3-k-xl-local/` (ignored by Git). Set
 `FACE_SWAP_SD_CPP_URL` to use an already-running compatible server instead; that
@@ -96,9 +116,9 @@ On the available 4 GB RTX 500 Ada Laptop GPU, one 512×512 test image took about
 80 seconds with CPU offload. The GGUF backend limits generated images to about
 512×512 pixels to fit this GPU; video frames are resized back to the source
 resolution after generation. A webcam or video request processes frames
-sequentially and is not real-time on that hardware. The runtime binary is not
-included in the API Docker image, so configure it in the container or provide an
-external `FACE_SWAP_SD_CPP_URL` before selecting the GGUF backend. The base Qwen
+sequentially and is not real-time on that hardware. The Docker host must provide NVIDIA GPU support and a compatible NVIDIA driver.
+To use a separately managed server instead, set `FACE_SWAP_SD_CPP_URL` to its
+reachable URL. The base Qwen
 model and adapters have separate license terms, including non-commercial
 research/evaluation restrictions; check the model cards before redistribution
 or deployment. Use only media for which you have permission.

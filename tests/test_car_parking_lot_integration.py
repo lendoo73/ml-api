@@ -23,8 +23,8 @@ def test_oriented_bounding_box_model_routes_are_registered():
 def test_car_parking_lot_weight_is_present():
     weight = (
         Path(__file__).resolve().parents[1]
-        / "oriented_bounding_box"
         / "weights"
+        / "oriented-bounding-box"
         / "yolo11l_car_parking_lot.pt"
     )
     assert weight.is_file()
@@ -61,6 +61,7 @@ def test_oriented_bounding_box_model_selects_configured_weights(model, weight_fi
     service = get_service(model)
 
     assert Path(service.model_repository._model_path).name == weight_filename
+    assert Path(service.model_repository._model_path).parent.name == "oriented-bounding-box"
 
 
 def test_car_parking_lot_rejects_invalid_confidence(client):

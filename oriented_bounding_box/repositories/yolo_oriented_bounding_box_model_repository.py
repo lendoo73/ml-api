@@ -1,6 +1,5 @@
 from collections import defaultdict
 import os
-from pathlib import Path
 from typing import Literal
 
 from object_detection.repositories.yolo_model_repository import YoloModelRepository
@@ -10,16 +9,17 @@ from oriented_bounding_box.models.entities.oriented_detection import (
 from oriented_bounding_box.models.entities.oriented_tracking_detection import (
     OrientedTrackingDetection,
 )
+from utils.model_weights import model_weights_dir
 
 OrientedDetectionModel = Literal["yolo26x-obb", "car-parking-lot"]
 MODEL_WEIGHT_PATHS = {
     "yolo26x-obb": os.getenv(
         "YOLO_ORIENTED_BOUNDING_BOX_MODEL",
-        str(Path(__file__).resolve().parent.parent / "weights" / "yolo26x-obb.pt"),
+        str(model_weights_dir("oriented-bounding-box") / "yolo26x-obb.pt"),
     ),
     "car-parking-lot": os.getenv(
         "YOLO_CAR_PARKING_LOT_MODEL",
-        str(Path(__file__).resolve().parent.parent / "weights" / "yolo11l_car_parking_lot.pt"),
+        str(model_weights_dir("oriented-bounding-box") / "yolo11l_car_parking_lot.pt"),
     ),
 }
 

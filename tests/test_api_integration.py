@@ -168,6 +168,7 @@ def test_segmentation_model_selects_configured_weights(model, weight_filename):
     service = get_image_service(model)
 
     assert Path(service.model_repository._model_path).name == weight_filename
+    assert Path(service.model_repository._model_path).parent.name == "segmentation"
 
 
 def test_brain_tumor_rejects_class_filtering(client):
@@ -269,6 +270,7 @@ def test_object_detection_model_selects_its_configured_weights(model, weight_fil
     service = get_service(model)
 
     assert Path(service.model_repository._model_path).name == weight_filename
+    assert Path(service.model_repository._model_path).parent.name == "object-detection"
 
 
 def test_object_detection_rejects_unsupported_model(client):
@@ -314,6 +316,7 @@ def test_classification_model_selects_configured_weights(model, weight_filename)
     service = get_image_service(model)
 
     assert Path(service.model_repository._model_path).name == weight_filename
+    assert Path(service.model_repository._model_path).parent.name == "classification"
 
 
 def test_chest_xray_model_is_rejected_for_video_prediction(client):

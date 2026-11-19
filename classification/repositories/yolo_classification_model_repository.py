@@ -10,18 +10,14 @@ import numpy as np
 from ultralytics import YOLO
 
 from classification.models.entities.classification import Classification
+from utils.model_weights import model_weights_dir
 
 
-default_model_path = Path(__file__).resolve().parent.parent / "weights" / "yolo26x-cls.pt"
 ClassificationModel = Literal["yolo26x-cls", "chest-xray", "weather"]
 MODEL_WEIGHT_PATHS = {
-    "yolo26x-cls": default_model_path,
-    "chest-xray": (
-        Path(__file__).resolve().parent.parent / "weights" / "yolo26x_chest_xray-cls.pt"
-    ),
-    "weather": (
-        Path(__file__).resolve().parent.parent / "weights" / "yolo26x_weather_cls.pt"
-    ),
+    "yolo26x-cls": model_weights_dir("classification") / "yolo26x-cls.pt",
+    "chest-xray": model_weights_dir("classification") / "yolo26x_chest_xray-cls.pt",
+    "weather": model_weights_dir("classification") / "yolo26x_weather_cls.pt",
 }
 
 class YoloClassificationModelRepository:

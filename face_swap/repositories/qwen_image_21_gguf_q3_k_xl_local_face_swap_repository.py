@@ -12,11 +12,11 @@ from pathlib import Path
 import requests
 from PIL import Image
 
+from utils.model_weights import model_weights_dir
 
-WEIGHTS_DIR = (
-    Path(__file__).resolve().parents[1]
-    / "weights"
-    / "qwen-image-2.1-gguf-q3-k-xl-local"
+WEIGHTS_DIR = model_weights_dir(
+    "face-swap",
+    "qwen-image-2.1-gguf-q3-k-xl-local",
 )
 DIFFUSION_MODEL_ID = "unsloth/Qwen-Image-2.1-GGUF"
 DIFFUSION_MODEL_FILE = "qwen-image-2.1-Q3_K_XL.gguf"

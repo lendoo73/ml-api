@@ -1,7 +1,6 @@
 import tempfile
 import threading
 from collections import defaultdict
-from pathlib import Path
 from typing import Literal
 import cv2
 import numpy as np
@@ -10,18 +9,15 @@ from ultralytics import YOLO
 from ultralytics.utils.plotting import Annotator, colors
 
 from object_detection.models.entities.detection import Detection
+from utils.model_weights import model_weights_dir
 
 
 DetectionModel = Literal["yolo26x", "face-mask-detect", "road-sign-detect", "knife"]
 MODEL_WEIGHT_PATHS = {
-    "yolo26x": Path(__file__).resolve().parent.parent / "weights" / "yolo26x.pt",
-    "face-mask-detect": (
-        Path(__file__).resolve().parent.parent / "weights" / "yolo26x_face_mask_detect.pt"
-    ),
-    "road-sign-detect": (
-        Path(__file__).resolve().parent.parent / "weights" / "yolo26x_road_sign-detect.pt"
-    ),
-    "knife": Path(__file__).resolve().parent.parent / "weights" / "yolo26s-knife.pt",
+    "yolo26x": model_weights_dir("object-detection") / "yolo26x.pt",
+    "face-mask-detect": model_weights_dir("object-detection") / "yolo26x_face_mask_detect.pt",
+    "road-sign-detect": model_weights_dir("object-detection") / "yolo26x_road_sign-detect.pt",
+    "knife": model_weights_dir("object-detection") / "yolo26s-knife.pt",
 }
 
 

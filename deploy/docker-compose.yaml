@@ -1,26 +1,19 @@
 services:
     api:
         image: lendoo73/ml-api:gpu
-        build:
-          context: ..
-          dockerfile: Dockerfile
         ports:
           - "8002:8000"
         working_dir: /app
         env_file:
           - sample.env
+        environment:
+          MODEL_WEIGHTS_DIR: /app/weights
         volumes:
           - ./log/:/app/log
           - ./config.json:/app/build/config.json
-          - face_swap_model_weights:/app/face_swap/weights
-        deploy:
-          resources:
-            reservations:
-              devices:
-                - driver: nvidia
-                  count: all
-                  capabilities: [gpu]
+          - model_weights:/app/weights
+        gpus: all
         command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 volumes:
-    face_swap_model_weights:
+    model_weights:

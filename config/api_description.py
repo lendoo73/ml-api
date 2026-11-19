@@ -27,7 +27,7 @@ endpoints allow `yolo26x-cls` or `weather`.
 | Oriented bounding box | `/api/oriented_bounding_box/predict/webcam` | `model` (`yolo26x-obb` or `car-parking-lot`); `tracking` (`false`); `tracker` (`bytetrack` or `botsort`) |
 | Segmentation | `/api/segmentation/predict/webcam` | `model` (`yolo26x-seg` or `pothole`); `classes` (optional, repeatable IDs or names; IDs only for pothole); `tracking` (`false`); `tracker` (`bytetrack`) |
 | Pose estimation | `/api/pose_estimation/predict/webcam` | `tracking` (`false`); `tracker` (`bytetrack`); `angles` (optional JSON-encoded list of three-keypoint lists; using it enables tracking) |
-| Face swap | `/api/face_swap/predict/webcam` | `model=qwen-image-2.1-bf16-local` or `qwen-image-2.1-gguf-q3-k-xl-local` |
+| Face swap | `/api/face_swap/predict/webcam` | `model=qwen-image-2.1-bf16-local`, `qwen-image-2.1-gguf-q3-k-xl-local`, or `qwen-image-2.1-huggingface-space` |
 
 Face swap webcam: send the portrait first, followed by target frames; each reply
 is a JPEG binary message.

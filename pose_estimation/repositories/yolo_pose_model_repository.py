@@ -1,18 +1,18 @@
 import os
 import tempfile
 import threading
-from pathlib import Path
 
 import cv2
 import numpy as np
 from ultralytics import YOLO
 
 from pose_estimation.models.entities.pose import Pose
+from utils.model_weights import model_weights_dir
 
 
 class YoloPoseModelRepository:
     def __init__(self, model_path: str | None = None):
-        default_model_path = Path(__file__).resolve().parent.parent / "weights" / "yolo26x-pose.pt"
+        default_model_path = model_weights_dir("pose-estimation") / "yolo26x-pose.pt"
         self._model_path = model_path or os.getenv("YOLO_POSE_MODEL", str(default_model_path))
         self._thread_models = threading.local()
 

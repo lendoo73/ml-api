@@ -13,4 +13,4 @@ GEMINI.md
 AI.md
 AI_INSTRUCTIONS.md
 *.instructions.md
-face_swap/weights/
+**/weights/

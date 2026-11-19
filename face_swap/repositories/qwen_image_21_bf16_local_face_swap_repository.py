@@ -6,12 +6,12 @@ from PIL import Image
 from face_swap.models.face_swap_model import (
     QWEN_IMAGE_21_BF16_LOCAL_FACE_SWAP_MODEL,
 )
+from utils.model_weights import model_weights_dir
 
 
-WEIGHTS_DIR = (
-    Path(__file__).resolve().parents[1]
-    / "weights"
-    / QWEN_IMAGE_21_BF16_LOCAL_FACE_SWAP_MODEL
+WEIGHTS_DIR = model_weights_dir(
+    "face-swap",
+    QWEN_IMAGE_21_BF16_LOCAL_FACE_SWAP_MODEL,
 )
 BASE_MODEL_ID = "Qwen/Qwen-Image-2.1"
 BFS_REPO_ID = "Alissonerdx/BFS-Best-Face-Swap"

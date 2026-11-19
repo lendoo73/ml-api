@@ -1,7 +1,6 @@
 import os
 import tempfile
 from collections import defaultdict
-from pathlib import Path
 
 import cv2
 import numpy as np
@@ -10,19 +9,20 @@ from typing import Literal
 from ultralytics import YOLO
 
 from segmentation.models.entities.segmentation import Segmentation
+from utils.model_weights import model_weights_dir
 
 
 SegmentationModel = Literal["yolo26x-seg", "brain-tumor", "pothole"]
 MODEL_WEIGHT_PATHS = {
     "yolo26x-seg": os.getenv(
         "YOLO_SEGMENTATION_MODEL",
-        str(Path(__file__).resolve().parent.parent / "weights" / "yolo26x-seg.pt"),
+        str(model_weights_dir("segmentation") / "yolo26x-seg.pt"),
     ),
     "brain-tumor": str(
-        Path(__file__).resolve().parent.parent / "weights" / "yolo26x-brain_tumor-seg.pt"
+        model_weights_dir("segmentation") / "yolo26x-brain_tumor-seg.pt"
     ),
     "pothole": str(
-        Path(__file__).resolve().parent.parent / "weights" / "yolo26x_pothole_segmentation.pt"
+        model_weights_dir("segmentation") / "yolo26x_pothole_segmentation.pt"
     ),
 }
 

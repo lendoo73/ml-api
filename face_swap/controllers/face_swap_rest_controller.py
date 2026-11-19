@@ -12,15 +12,15 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from starlette.background import BackgroundTask
 
 from face_swap.models.face_swap_model import (
     FaceSwapModel,
     QWEN_IMAGE_21_BF16_LOCAL_FACE_SWAP_MODEL,
-    QWEN_IMAGE_21_GGUF_Q3_K_XL_LOCAL_FACE_SWAP_MODEL,
 )
 from face_swap.services.face_swap_service import FaceSwapService
+from services.video_job_manager import video_job_manager
 from utils.execution_time import execution_time
 from utils.video import save_uploadfile_to_temp
 
@@ -28,7 +28,8 @@ from utils.video import save_uploadfile_to_temp
 MODEL_DESCRIPTION = (
     "Face-swap model to use. Available models: "
     "'qwen-image-2.1-bf16-local' and "
-    "'qwen-image-2.1-gguf-q3-k-xl-local'."
+    "'qwen-image-2.1-gguf-q3-k-xl-local' and "
+    "'qwen-image-2.1-huggingface-space'."
 )
 
 
@@ -76,23 +77,54 @@ async def predict_video(
 ):
     reference_bytes = await source.read()
     video_path = await save_uploadfile_to_temp(target_video)
-    try:
-        output_path = await run_in_threadpool(
+
+    async def process_video(path, progress_callback):
+        return await run_in_threadpool(
             service.swap_video,
             reference_bytes,
-            video_path,
+            path,
+            progress_callback,
         )
-    except ValueError as error:
-        _remove_files(video_path)
-        raise HTTPException(status_code=400, detail=str(error)) from error
-    except Exception:
-        _remove_files(video_path)
-        raise
+
+    job_id = video_job_manager.submit_path(
+        video_path,
+        process_video,
+        result_serializer=lambda completed_job_id, _: {
+            "download_url": (
+                f"/api/face_swap/predict/video/result/{completed_job_id}"
+            )
+        },
+    )
+    return {"job_id": job_id}
+
+
+@router.get("/predict/video/progress/{job_id}")
+async def video_progress(job_id: str):
+    if video_job_manager.get(job_id) is None:
+        raise HTTPException(status_code=404, detail="Video prediction job was not found.")
+    return StreamingResponse(
+        video_job_manager.stream(job_id),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+    )
+
+
+@router.get("/predict/video/result/{job_id}")
+async def video_result(job_id: str):
+    job = video_job_manager.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Video prediction job was not found.")
+    if job.status == "failed":
+        raise HTTPException(status_code=409, detail=job.error)
+    if job.status != "completed" or not isinstance(job.result, str):
+        raise HTTPException(status_code=409, detail="Video prediction job is not complete.")
+    if not os.path.isfile(job.result):
+        raise HTTPException(status_code=404, detail="Video prediction result was not found.")
     return FileResponse(
-        output_path,
+        job.result,
         media_type="video/mp4",
         filename="face_swap.mp4",
-        background=BackgroundTask(_remove_files, output_path, video_path),
+        background=BackgroundTask(_remove_files, job.result),
     )
 
 

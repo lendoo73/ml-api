@@ -21,21 +21,34 @@ class VideoJob:
 
 
 WorkerFactory = Callable[[Callable[[int, int | None], None]], Awaitable[Any]]
+ResultSerializer = Callable[[str, Any], Any]
 
 
 class VideoJobManager:
     def __init__(self):
         self._jobs: dict[str, VideoJob] = {}
+        self._result_serializers: dict[str, ResultSerializer] = {}
         self._lock = threading.Lock()
 
-    def submit(self, worker_factory: WorkerFactory) -> str:
+    def submit(
+        self,
+        worker_factory: WorkerFactory,
+        result_serializer: ResultSerializer | None = None,
+    ) -> str:
         job_id = str(uuid.uuid4())
         with self._lock:
             self._jobs[job_id] = VideoJob(job_id=job_id)
+            if result_serializer:
+                self._result_serializers[job_id] = result_serializer
         asyncio.create_task(self._run(job_id, worker_factory))
         return job_id
 
-    def submit_path(self, video_path: str, processor: Callable[..., Awaitable[Any]]) -> str:
+    def submit_path(
+        self,
+        video_path: str,
+        processor: Callable[..., Awaitable[Any]],
+        result_serializer: ResultSerializer | None = None,
+    ) -> str:
         async def worker(progress_callback):
             try:
                 return await processor(video_path, progress_callback)
@@ -45,7 +58,7 @@ class VideoJobManager:
                 except OSError:
                     pass
 
-        return self.submit(worker)
+        return self.submit(worker, result_serializer)
 
     async def _run(self, job_id: str, worker_factory: WorkerFactory):
         self._update(job_id, status="running")
@@ -79,7 +92,9 @@ class VideoJobManager:
                 "progress": job.progress,
             }
             if job.status == "completed":
-                payload["result"] = jsonable_encoder(job.result)
+                serializer = self._result_serializers.get(job_id)
+                result = serializer(job.job_id, job.result) if serializer else job.result
+                payload["result"] = jsonable_encoder(result)
             if job.status == "failed":
                 payload["error"] = job.error
             yield f"data: {json.dumps(payload)}\n\n"
