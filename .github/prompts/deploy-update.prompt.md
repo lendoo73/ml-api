@@ -11,6 +11,7 @@ Use this prompt when the user explicitly asks to deploy the current update. Carr
 
 - Inspect the worktree and current branch first. Preserve unrelated user changes and never include generated media, model weights, secrets, or unrelated files in a commit.
 - Review the actual Git remotes, current branch, project version/tag, Dockerfile, `.dockerignore`, and every relevant Compose file. This repository's configured Git remote is named `origin`; use its actual URL rather than assuming a hosting provider.
+- Treat `version.json` as the sole source of truth for the API and worker release tag. Use its value exactly; do not infer, increment, or modify the version. The user updates `version.json` manually when choosing a new version.
 - Run the narrowest relevant tests and checks for the update. Fix failures caused by the update; report unrelated existing failures accurately.
 - Ensure model weights remain outside the Docker build context and are persisted in the existing named `model_weights` volume mounted at `/app/weights`.
 - If frontend source changes and the sibling React source is available, rebuild the served `build` assets using that project's existing build workflow before creating the API image. Do not make unrelated frontend changes.
@@ -23,9 +24,9 @@ Use this prompt when the user explicitly asks to deploy the current update. Carr
 
 ## 3. Build and publish the Docker image
 
-- Determine the API image repository and release tag from the current laptop Cloudflare Compose file and project version. The current deployment uses `lendoo73/ml-rest-api`; do not assume the README's older image name if deployment configuration differs.
-- Do not overwrite an existing release tag. Do not create or move `latest` unless the user explicitly asks.
-- Build the API image from the repository root with the repository Dockerfile and `.dockerignore`. Also build and push `lendoo73/ml-rest-api-video-worker` using `face_swap_video_worker/Dockerfile`; keep its release tag synchronized with the API release tag unless an existing tag would be overwritten. Push both selected tags to Docker Hub. Do not load the huge API image into the local Docker image store if a direct Buildx push is available and appropriate.
+- Use the exact `version.json` value as the release tag for both images and synchronize the Compose files to that tag. The current API repository is `lendoo73/ml-rest-api`; do not assume the README's older image name if deployment configuration differs.
+- Do not overwrite an existing release tag unless the user explicitly confirms that the current deployment is a same-version bugfix. If either image tag already exists and the user has not authorized replacing it, stop and ask before building or pushing. Do not create or move `latest` unless the user explicitly asks.
+- Build the API image from the repository root with the repository Dockerfile and `.dockerignore`. Also build and push `lendoo73/ml-rest-api-video-worker` using `face_swap_video_worker/Dockerfile`, using the same `version.json` release tag. Push both selected tags to Docker Hub. Do not load the huge API image into the local Docker image store if a direct Buildx push is available and appropriate.
 - If an image-build or registry push fails, resolve the concrete failure and retry; do not claim publication until the push succeeds.
 
 ## 4. Synchronize deployment Compose files

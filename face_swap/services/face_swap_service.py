@@ -1,3 +1,4 @@
+from enum import Enum
 from io import BytesIO
 
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -7,6 +8,10 @@ from face_swap.models.face_swap_model import (
     QWEN_IMAGE_21_BF16_LOCAL_FACE_SWAP_MODEL,
     QWEN_IMAGE_21_GGUF_Q3_K_XL_LOCAL_FACE_SWAP_MODEL,
     QWEN_IMAGE_21_HUGGINGFACE_SPACE_FACE_SWAP_MODEL,
+)
+from face_swap.models.face_swap_image_model import FaceSwapImageModel
+from face_swap.repositories.face_swap_image_worker_repository import (
+    FaceSwapImageWorkerRepository,
 )
 from face_swap.repositories.qwen_image_21_gguf_q3_k_xl_local_face_swap_repository import (
     QwenImage21GgufQ3KxlLocalFaceSwapRepository,
@@ -27,6 +32,7 @@ _MODEL_REPOSITORY_FACTORIES = {
     QWEN_IMAGE_21_HUGGINGFACE_SPACE_FACE_SWAP_MODEL: (
         QwenImage21HuggingFaceSpaceFaceSwapRepository
     ),
+    FaceSwapImageModel.FACEFUSION_3_9_2_LOCAL.value: FaceSwapImageWorkerRepository,
 }
 
 
@@ -34,11 +40,14 @@ class FaceSwapService:
     def __init__(
         self,
         model_repository=None,
-        model: FaceSwapModel = QWEN_IMAGE_21_BF16_LOCAL_FACE_SWAP_MODEL,
+        model: FaceSwapModel | FaceSwapImageModel = (
+            QWEN_IMAGE_21_BF16_LOCAL_FACE_SWAP_MODEL
+        ),
     ):
         if model_repository is None:
+            model_name = model.value if isinstance(model, Enum) else model
             try:
-                repository_factory = _MODEL_REPOSITORY_FACTORIES[model]
+                repository_factory = _MODEL_REPOSITORY_FACTORIES[model_name]
             except KeyError as error:
                 raise ValueError(f"Unsupported face-swap model: {model}") from error
             model_repository = repository_factory()

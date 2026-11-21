@@ -7,20 +7,54 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
 
+from face_swap_video_worker.services.face_fusion_image_service import (
+    FaceFusionImageService,
+)
 from face_swap_video_worker.services.face_fusion_video_service import (
     FaceFusionVideoService,
 )
 from services.video_job_manager import VideoJobManager
 
 
-app = FastAPI(title="Face-swap video worker")
+app = FastAPI(title="Face-swap worker")
 job_manager = VideoJobManager()
 video_service = FaceFusionVideoService()
+image_service = FaceFusionImageService()
 
 
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.post("/images", summary="FaceFusion image face swap")
+async def swap_image(
+    source: UploadFile = File(...),
+    target_image: UploadFile = File(...),
+):
+    source_path = await run_in_threadpool(_save_upload, source)
+    try:
+        target_path = await run_in_threadpool(_save_upload, target_image)
+    except Exception:
+        _remove_file(source_path)
+        raise
+
+    try:
+        output_path = await run_in_threadpool(
+            image_service.swap_image,
+            source_path,
+            target_path,
+        )
+    except Exception:
+        _remove_file(source_path, target_path)
+        raise
+    _remove_file(source_path, target_path)
+    return FileResponse(
+        output_path,
+        media_type="image/jpeg",
+        filename="face_swap.jpg",
+        background=BackgroundTask(_remove_file, output_path),
+    )
 
 
 @app.post("/jobs")
@@ -101,8 +135,9 @@ def _save_upload(upload: UploadFile) -> str:
     return path
 
 
-def _remove_file(path: str):
-    try:
-        os.remove(path)
-    except FileNotFoundError:
-        pass
+def _remove_file(*paths: str):
+    for path in paths:
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass

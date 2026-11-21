@@ -85,10 +85,7 @@ Video JSON predictions run as background jobs. The response contains a `job_id`;
 ## Face swapping
 
 The image endpoint accepts `source` (portrait) and `target` (target image)
-multipart fields and returns a JPEG. The webcam WebSocket expects the portrait
-as its first binary message, then target frames as binary messages; each
-prediction is returned as a JPEG binary message. The image and webcam endpoints
-accept the `model` query parameter:
+multipart fields and returns a JPEG. Its `model` query parameter accepts:
 
 - `qwen-image-2.1-bf16-local` (default) runs the existing Diffusers backend.
 - `qwen-image-2.1-gguf-q3-k-xl-local` runs the Q3_K_XL GGUF through
@@ -100,6 +97,13 @@ accept the `model` query parameter:
   `FACE_SWAP_HF_SPACE_TIMEOUT` to change the generation timeout (default: 1800
   seconds). The hosted Space does not use this repository's local BFS/Viggle
   adapters, so its face-swap results may differ from the local backends.
+- `facefusion-3.9.2-local` runs FaceFusion's image-to-image workflow in the
+  local video-worker container.
+
+The webcam WebSocket accepts the three Qwen model identifiers above; FaceFusion
+is not available for webcam frames. It expects the portrait as its first binary
+message, then target frames as binary messages, and returns each prediction as
+a JPEG binary message.
 
 The video endpoint accepts `source` and `target_video` multipart fields and
 uses FaceFusion 3.9.2 with reference-face tracking. Its `model` query parameter
@@ -110,7 +114,8 @@ The default `inswapper_128` asset is listed as **Non-Commercial** in
 [FaceFusion's asset licenses](https://docs.facefusion.io/introduction/licenses);
 do not use it commercially without obtaining the required rights.
 
-Use `POST /api/face_swap/predict/image?model=qwen-image-2.1-bf16-local` or
+Use `POST /api/face_swap/predict/image?model=facefusion-3.9.2-local` or
+`POST /api/face_swap/predict/image?model=qwen-image-2.1-bf16-local`, or
 `POST /api/face_swap/predict/video?model=facefusion-3.9.2-local`.
 Connect to `ws://<host>/api/face_swap/predict/webcam?model=qwen-image-2.1-gguf-q3-k-xl-local`
 for webcam frames.

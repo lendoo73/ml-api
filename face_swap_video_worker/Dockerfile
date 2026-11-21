@@ -15,6 +15,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 /usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
     ffmpeg \
     git \
     libgl1 \

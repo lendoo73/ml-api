@@ -19,6 +19,9 @@ from face_swap.models.face_swap_model import (
     FaceSwapModel,
     QWEN_IMAGE_21_BF16_LOCAL_FACE_SWAP_MODEL,
 )
+from face_swap.models.face_swap_image_model import (
+    FaceSwapImageModel,
+)
 from face_swap.models.face_swap_video_model import (
     FACEFUSION_3_9_2_LOCAL_VIDEO_MODEL,
     FaceSwapVideoModel,
@@ -30,23 +33,39 @@ from utils.execution_time import execution_time
 from utils.video import save_uploadfile_to_temp
 
 
-MODEL_DESCRIPTION = (
-    "Face-swap model to use. Available models: "
+IMAGE_MODEL_DESCRIPTION = (
+    "Image face-swap model to use. Available models: "
     "'qwen-image-2.1-bf16-local' and "
+    "'qwen-image-2.1-gguf-q3-k-xl-local' and "
+    "'qwen-image-2.1-huggingface-space' and "
+    "'facefusion-3.9.2-local'."
+)
+WEBCAM_MODEL_DESCRIPTION = (
+    "Webcam face-swap model to use. Available models: "
+    "'qwen-image-2.1-bf16-local', "
     "'qwen-image-2.1-gguf-q3-k-xl-local' and "
     "'qwen-image-2.1-huggingface-space'."
 )
 
 
 @lru_cache(maxsize=None)
-def _cached_service(model: FaceSwapModel) -> FaceSwapService:
+def _cached_service(model: FaceSwapModel | FaceSwapImageModel) -> FaceSwapService:
     return FaceSwapService(model=model)
 
 
 def get_service(
+    model: FaceSwapImageModel = Query(
+        FaceSwapImageModel.QWEN_IMAGE_21_BF16_LOCAL,
+        description=IMAGE_MODEL_DESCRIPTION,
+    ),
+) -> FaceSwapService:
+    return _cached_service(model)
+
+
+def get_webcam_service(
     model: FaceSwapModel = Query(
         QWEN_IMAGE_21_BF16_LOCAL_FACE_SWAP_MODEL,
-        description=MODEL_DESCRIPTION,
+        description=WEBCAM_MODEL_DESCRIPTION,
     ),
 ) -> FaceSwapService:
     return _cached_service(model)
@@ -157,11 +176,11 @@ async def predict_webcam(
     websocket: WebSocket,
     model: FaceSwapModel = Query(
         QWEN_IMAGE_21_BF16_LOCAL_FACE_SWAP_MODEL,
-        description=MODEL_DESCRIPTION,
+        description=WEBCAM_MODEL_DESCRIPTION,
     ),
 ):
     await websocket.accept()
-    service = get_service(model)
+    service = get_webcam_service(model)
     try:
         reference_bytes = await websocket.receive_bytes()
         reference_image = await run_in_threadpool(

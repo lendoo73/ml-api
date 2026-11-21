@@ -14,6 +14,11 @@ from face_swap.controllers.face_swap_rest_controller import (
 from face_swap.models.face_swap_model import (
     QWEN_IMAGE_21_GGUF_Q3_K_XL_LOCAL_FACE_SWAP_MODEL,
 )
+from face_swap.models.face_swap_image_model import FaceSwapImageModel
+from face_swap.repositories.face_swap_image_worker_repository import (
+    FaceSwapImageWorkerRepository,
+)
+from face_swap.services.face_swap_video_service import FaceSwapVideoService
 import face_swap.services.face_swap_service as face_swap_service_module
 from face_swap.services.face_swap_service import FaceSwapService
 from main import app
@@ -48,6 +53,29 @@ class FakeFaceSwapVideoService:
         output_path = str(Path(video_path).with_name("fake-face-swap.mp4"))
         Path(output_path).write_bytes(b"swapped-video")
         return output_path
+
+
+def test_face_swap_video_service_invokes_facefusion_locally(tmp_path):
+    class FakeFaceFusionVideoService:
+        def swap_video(self, source_path, video_path, progress_callback):
+            assert Path(source_path).read_bytes() == b"portrait"
+            assert Path(video_path).read_bytes() == b"video"
+            progress_callback(1, 2)
+            return "swapped-video.mp4"
+
+    progress = []
+    service = FaceSwapVideoService(FakeFaceFusionVideoService())
+    video_path = tmp_path / "target.mp4"
+    video_path.write_bytes(b"video")
+
+    result = service.swap_video(
+        b"portrait",
+        str(video_path),
+        lambda current, total: progress.append((current, total)),
+    )
+
+    assert result == "swapped-video.mp4"
+    assert progress == [(1, 2)]
 
 
 def test_face_swap_routes_are_registered():
@@ -95,17 +123,36 @@ def test_face_swap_image_rejects_invalid_portrait(monkeypatch):
     assert response.json()["detail"] == "Invalid portrait image."
 
 
+def test_face_swap_image_endpoint_accepts_facefusion_model():
+    app.dependency_overrides[get_service] = FakeFaceSwapService
+    try:
+        response = TestClient(app).post(
+            "/api/face_swap/predict/image?model=facefusion-3.9.2-local",
+            files={
+                "source": ("portrait.jpg", b"portrait", "image/jpeg"),
+                "target": ("target.jpg", b"target", "image/jpeg"),
+            },
+        )
+    finally:
+        app.dependency_overrides.pop(get_service, None)
+
+    assert response.status_code == 200
+    assert response.content == b"swapped-image"
+
+
 def test_face_swap_model_parameter_is_limited_to_available_models():
     paths = app.openapi()["paths"]
     parameters = paths["/api/face_swap/predict/image"]["post"]["parameters"]
     model_parameter = next(
         parameter for parameter in parameters if parameter["name"] == "model"
     )
-    assert model_parameter["schema"]["enum"] == [
+    assert app.openapi()["components"]["schemas"]["FaceSwapImageModel"]["enum"] == [
         "qwen-image-2.1-bf16-local",
         "qwen-image-2.1-gguf-q3-k-xl-local",
         "qwen-image-2.1-huggingface-space",
+        "facefusion-3.9.2-local",
     ]
+    assert model_parameter["schema"]["default"] == "qwen-image-2.1-bf16-local"
     video_model_parameter = next(
         parameter
         for parameter in paths["/api/face_swap/predict/video"]["post"]["parameters"]
@@ -139,6 +186,14 @@ def test_face_swap_service_selects_gguf_repository(monkeypatch):
     )
 
     assert service.model_repository is repository
+
+
+def test_face_swap_service_selects_facefusion_image_repository():
+    service = FaceSwapService(
+        model=FaceSwapImageModel.FACEFUSION_3_9_2_LOCAL
+    )
+
+    assert isinstance(service.model_repository, FaceSwapImageWorkerRepository)
 
 
 def test_face_swap_weight_directories_use_the_shared_model_weights_root():
@@ -241,7 +296,11 @@ def test_face_swap_webcam_receives_portrait_then_streams_frames(monkeypatch):
         selected_models.append(model)
         return FakeFaceSwapService()
 
-    monkeypatch.setattr(face_swap_rest_controller, "get_service", fake_get_service)
+    monkeypatch.setattr(
+        face_swap_rest_controller,
+        "get_webcam_service",
+        fake_get_service,
+    )
     with TestClient(app).websocket_connect(
         "/api/face_swap/predict/webcam?model=qwen-image-2.1-bf16-local"
     ) as websocket:
@@ -259,3 +318,56 @@ def test_face_swap_webcam_rejects_unknown_model():
             pass
 
     assert error.value.code == 1008
+
+
+def test_face_swap_webcam_does_not_accept_facefusion_image_model():
+    with pytest.raises(WebSocketDisconnect) as error:
+        with TestClient(app).websocket_connect(
+            "/api/face_swap/predict/webcam?model=facefusion-3.9.2-local"
+        ):
+            pass
+
+    assert error.value.code == 1008
+
+
+def test_facefusion_image_repository_calls_worker():
+    from io import BytesIO
+
+    from PIL import Image
+
+    from face_swap.repositories.face_swap_image_worker_repository import (
+        FaceSwapImageWorkerRepository,
+    )
+
+    output = BytesIO()
+    Image.new("RGB", (2, 2), "red").save(output, format="JPEG")
+
+    class FakeResponse:
+        status_code = 200
+
+        def __init__(self):
+            self.content = output.getvalue()
+
+        def raise_for_status(self):
+            return None
+
+    class FakeSession:
+        def post(self, url, files, timeout):
+            assert url == "http://worker:8001/images"
+            assert set(files) == {"source", "target_image"}
+            assert files["source"][1].startswith(b"\x89PNG")
+            assert files["target_image"][1].startswith(b"\x89PNG")
+            assert timeout[0] == 15
+            return FakeResponse()
+
+    repository = FaceSwapImageWorkerRepository(
+        worker_url="http://worker:8001",
+        session=FakeSession(),
+    )
+    result = repository.swap(
+        Image.new("RGB", (2, 2), "blue"),
+        Image.new("RGB", (2, 2), "green"),
+    )
+
+    assert result.mode == "RGB"
+    assert result.size == (2, 2)
